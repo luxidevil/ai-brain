@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "lSii-xqTsDp9KlqD94y3M"
+uri = "file://brain-api-commands.txt"
+type = "text"
+title = "Brain API — Copy-Paste Reference"
