@@ -181,70 +181,74 @@ router.get("/context", async (req, res) => {
     const filter = { projectId };
 
     const [allMessages, allActions, allLogs] = await Promise.all([
-      Message.find(filter).sort({ createdAt: 1 }).select("role content sessionId metadata agentId"),
-      Item.find(filter).sort({ createdAt: 1 }).select("name description tags data sessionId"),
-      Log.find(filter).sort({ createdAt: 1 }).select("level message sessionId data"),
+      Message.find(filter).sort({ createdAt: 1 }).select("role content sessionId metadata agentId createdAt"),
+      Item.find(filter).sort({ createdAt: 1 }).select("name description tags data sessionId createdAt"),
+      Log.find(filter).sort({ createdAt: 1 }).select("level message sessionId data createdAt"),
     ]);
 
-    // Group by sessionId preserving insertion order
-    const sessionMap = new Map<string, {
-      messages: { role: string; content: string; agentId?: string | null }[];
-      planning: { content: string; agentId?: string | null }[];
-      actions: { name: string; description?: string | null; tags?: string[]; data?: unknown }[];
-      logs: { level?: string; message?: string; data?: unknown }[];
-    }>();
+    // Build a flat chronological timeline — all events sorted by createdAt
+    type TimelineEvent =
+      | { type: "message"; session: string; role: string; content: string; agentId?: string; _ts: Date }
+      | { type: "planning"; session: string; content: string; agentId?: string; _ts: Date }
+      | { type: "action"; session: string; name: string; description?: string; _ts: Date }
+      | { type: "log"; session: string; level?: string; message?: string; _ts: Date };
 
-    const getSession = (sid: string) => {
-      if (!sessionMap.has(sid)) {
-        sessionMap.set(sid, { messages: [], planning: [], actions: [], logs: [] });
-      }
-      return sessionMap.get(sid)!;
-    };
+    const timeline: TimelineEvent[] = [];
 
     for (const m of allMessages) {
-      const sid = m.sessionId ?? "unknown";
-      const s = getSession(sid);
-      if (m.metadata?.type === "planning") {
-        s.planning.push({ content: m.content ?? "", ...(m.agentId ? { agentId: m.agentId } : {}) });
+      const isPlanning = m.metadata?.type === "planning";
+      if (isPlanning) {
+        timeline.push({
+          type: "planning",
+          session: m.sessionId ?? "unknown",
+          content: m.content ?? "",
+          ...(m.agentId ? { agentId: m.agentId } : {}),
+          _ts: (m as unknown as { createdAt: Date }).createdAt,
+        });
       } else {
-        s.messages.push({ role: m.role ?? "system", content: m.content ?? "", ...(m.agentId ? { agentId: m.agentId } : {}) });
+        timeline.push({
+          type: "message",
+          session: m.sessionId ?? "unknown",
+          role: m.role ?? "system",
+          content: m.content ?? "",
+          ...(m.agentId ? { agentId: m.agentId } : {}),
+          _ts: (m as unknown as { createdAt: Date }).createdAt,
+        });
       }
     }
 
     for (const a of allActions) {
-      const sid = a.sessionId ?? "unknown";
       const d = a.data as Record<string, unknown> ?? {};
       const raw = d.raw as Record<string, unknown> ?? {};
-      // Reconstruct clean action: prefer data.raw.content as description if stored that way
       const description = a.description
         ?? (typeof raw.content === "string" ? raw.content : null)
         ?? (typeof d.content === "string" ? d.content : null)
-        ?? null;
-      getSession(sid).actions.push({
+        ?? undefined;
+      timeline.push({
+        type: "action",
+        session: a.sessionId ?? "unknown",
         name: a.name,
         ...(description ? { description } : {}),
-        ...(a.tags?.length ? { tags: (a.tags as string[]).filter((t: string) => t !== "action") } : {}),
+        _ts: (a as unknown as { createdAt: Date }).createdAt,
       });
     }
 
     for (const l of allLogs) {
-      const sid = (l as Record<string, unknown>).sessionId as string ?? "unknown";
-      getSession(sid).logs.push({
-        ...(l.level ? { level: l.level } : {}),
-        ...(l.message ? { message: l.message } : {}),
-        ...(l.data && Object.keys(l.data as object).length ? { data: l.data } : {}),
+      const logDoc = l as unknown as { sessionId?: string; level?: string; message?: string; createdAt: Date };
+      timeline.push({
+        type: "log",
+        session: logDoc.sessionId ?? "unknown",
+        ...(logDoc.level ? { level: logDoc.level } : {}),
+        ...(logDoc.message ? { message: logDoc.message } : {}),
+        _ts: logDoc.createdAt,
       });
     }
 
-    const sessions = Array.from(sessionMap.entries()).map(([sessionId, data]) => ({
-      sessionId,
-      ...(data.messages.length ? { messages: data.messages } : {}),
-      ...(data.planning.length ? { planning: data.planning } : {}),
-      ...(data.actions.length ? { actions: data.actions } : {}),
-      ...(data.logs.length ? { logs: data.logs } : {}),
-    }));
+    // Sort everything chronologically, then strip internal _ts field
+    timeline.sort((a, b) => (a._ts?.getTime?.() ?? 0) - (b._ts?.getTime?.() ?? 0));
+    const events = timeline.map(({ _ts: _stripped, ...e }) => e);
 
-    res.json({ projectId, sessions });
+    res.json({ projectId, total: events.length, events });
   } catch (err: unknown) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed" });
   }
