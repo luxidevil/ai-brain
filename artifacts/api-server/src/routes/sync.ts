@@ -166,6 +166,83 @@ router.get("/read", async (req, res) => {
 });
 
 /**
+ * GET /sync/context
+ * Returns ALL brain data for a project in a compact, token-efficient plain-text format
+ * designed for direct injection into an LLM context window.
+ * Strips all MongoDB metadata (_id, __v, timestamps) and uses short labels.
+ */
+router.get("/context", async (req, res) => {
+  const { projectId } = req.query as Record<string, string>;
+  if (!projectId) {
+    return res.status(400).send("# ERROR: ?projectId= is required");
+  }
+
+  try {
+    const filter = { projectId };
+
+    const [allMessages, actions] = await Promise.all([
+      Message.find(filter).sort({ createdAt: 1 }).select("role content sessionId metadata"),
+      Item.find(filter).sort({ createdAt: 1 }).select("name description tags data sessionId"),
+    ]);
+
+    const messages = allMessages.filter((m) => m.metadata?.type !== "planning");
+    const planning = allMessages.filter((m) => m.metadata?.type === "planning");
+
+    // Group everything by sessionId
+    const sessions = new Map<string, {
+      messages: typeof messages;
+      planning: typeof planning;
+      actions: typeof actions;
+    }>();
+
+    const getSession = (sid: string) => {
+      if (!sessions.has(sid)) sessions.set(sid, { messages: [], planning: [], actions: [] });
+      return sessions.get(sid)!;
+    };
+
+    for (const m of messages) getSession(m.sessionId ?? "unknown").messages.push(m);
+    for (const p of planning) getSession(p.sessionId ?? "unknown").planning.push(p);
+    for (const a of actions) getSession(a.sessionId ?? "unknown").actions.push(a);
+
+    // Render compact plain-text
+    const lines: string[] = [];
+    lines.push(`# BRAIN: ${projectId}`);
+    lines.push(`# sessions:${sessions.size} | messages:${messages.length} | planning:${planning.length} | actions:${actions.length}`);
+    lines.push("");
+
+    for (const [sid, data] of sessions) {
+      lines.push(`## [${sid}]`);
+
+      for (const m of data.planning) {
+        lines.push(`[plan] ${(m.content ?? "").replace(/\n/g, " ")}`);
+      }
+      for (const m of data.messages) {
+        lines.push(`[${m.role ?? "msg"}] ${(m.content ?? "").replace(/\n/g, " ")}`);
+      }
+      for (const a of data.actions) {
+        const tags = (a.tags ?? []).filter((t: string) => t !== "action").join(",");
+        const d = a.data as Record<string, unknown> ?? {};
+        const raw = d.raw as Record<string, unknown> ?? {};
+        // Dig for the most meaningful text: description > data.raw.content > data.content > data.raw (stringified)
+        const detail = a.description
+          ?? (typeof raw.content === "string" ? raw.content : null)
+          ?? (typeof d.content === "string" ? d.content : null)
+          ?? (Object.keys(raw).length ? JSON.stringify(raw) : "");
+        const suffix = detail ? ` — ${String(detail).replace(/\n/g, " ").slice(0, 160)}` : "";
+        lines.push(`[action] ${a.name}${tags ? ` (${tags})` : ""}${suffix}`);
+      }
+
+      lines.push("");
+    }
+
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.send(lines.join("\n"));
+  } catch (err: unknown) {
+    res.status(500).send(`# ERROR: ${err instanceof Error ? err.message : "Failed"}`);
+  }
+});
+
+/**
  * GET /sync/projects
  * List all unique projectIds stored in the brain.
  */
