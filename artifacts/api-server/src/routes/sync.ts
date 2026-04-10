@@ -167,78 +167,86 @@ router.get("/read", async (req, res) => {
 
 /**
  * GET /sync/context
- * Returns ALL brain data for a project in a compact, token-efficient plain-text format
- * designed for direct injection into an LLM context window.
- * Strips all MongoDB metadata (_id, __v, timestamps) and uses short labels.
+ * Returns ALL brain data for a project in the exact same shape it was written (POST /sync),
+ * grouped by sessionId — so the read format mirrors the write format perfectly.
+ * Strips MongoDB metadata (_id, __v, createdAt, updatedAt).
  */
 router.get("/context", async (req, res) => {
   const { projectId } = req.query as Record<string, string>;
   if (!projectId) {
-    return res.status(400).send("# ERROR: ?projectId= is required");
+    return res.status(400).json({ error: "?projectId= is required" });
   }
 
   try {
     const filter = { projectId };
 
-    const [allMessages, actions] = await Promise.all([
-      Message.find(filter).sort({ createdAt: 1 }).select("role content sessionId metadata"),
+    const [allMessages, allActions, allLogs] = await Promise.all([
+      Message.find(filter).sort({ createdAt: 1 }).select("role content sessionId metadata agentId"),
       Item.find(filter).sort({ createdAt: 1 }).select("name description tags data sessionId"),
+      Log.find(filter).sort({ createdAt: 1 }).select("level message sessionId data"),
     ]);
 
-    const messages = allMessages.filter((m) => m.metadata?.type !== "planning");
-    const planning = allMessages.filter((m) => m.metadata?.type === "planning");
-
-    // Group everything by sessionId
-    const sessions = new Map<string, {
-      messages: typeof messages;
-      planning: typeof planning;
-      actions: typeof actions;
+    // Group by sessionId preserving insertion order
+    const sessionMap = new Map<string, {
+      messages: { role: string; content: string; agentId?: string | null }[];
+      planning: { content: string; agentId?: string | null }[];
+      actions: { name: string; description?: string | null; tags?: string[]; data?: unknown }[];
+      logs: { level?: string; message?: string; data?: unknown }[];
     }>();
 
     const getSession = (sid: string) => {
-      if (!sessions.has(sid)) sessions.set(sid, { messages: [], planning: [], actions: [] });
-      return sessions.get(sid)!;
+      if (!sessionMap.has(sid)) {
+        sessionMap.set(sid, { messages: [], planning: [], actions: [], logs: [] });
+      }
+      return sessionMap.get(sid)!;
     };
 
-    for (const m of messages) getSession(m.sessionId ?? "unknown").messages.push(m);
-    for (const p of planning) getSession(p.sessionId ?? "unknown").planning.push(p);
-    for (const a of actions) getSession(a.sessionId ?? "unknown").actions.push(a);
-
-    // Render compact plain-text
-    const lines: string[] = [];
-    lines.push(`# BRAIN: ${projectId}`);
-    lines.push(`# sessions:${sessions.size} | messages:${messages.length} | planning:${planning.length} | actions:${actions.length}`);
-    lines.push("");
-
-    for (const [sid, data] of sessions) {
-      lines.push(`## [${sid}]`);
-
-      for (const m of data.planning) {
-        lines.push(`[plan] ${(m.content ?? "").replace(/\n/g, " ")}`);
+    for (const m of allMessages) {
+      const sid = m.sessionId ?? "unknown";
+      const s = getSession(sid);
+      if (m.metadata?.type === "planning") {
+        s.planning.push({ content: m.content ?? "", ...(m.agentId ? { agentId: m.agentId } : {}) });
+      } else {
+        s.messages.push({ role: m.role ?? "system", content: m.content ?? "", ...(m.agentId ? { agentId: m.agentId } : {}) });
       }
-      for (const m of data.messages) {
-        lines.push(`[${m.role ?? "msg"}] ${(m.content ?? "").replace(/\n/g, " ")}`);
-      }
-      for (const a of data.actions) {
-        const tags = (a.tags ?? []).filter((t: string) => t !== "action").join(",");
-        const d = a.data as Record<string, unknown> ?? {};
-        const raw = d.raw as Record<string, unknown> ?? {};
-        // Dig for the most meaningful text: description > data.raw.content > data.content > data.raw (stringified)
-        const detail = a.description
-          ?? (typeof raw.content === "string" ? raw.content : null)
-          ?? (typeof d.content === "string" ? d.content : null)
-          ?? (Object.keys(raw).length ? JSON.stringify(raw) : "");
-        const suffix = detail ? ` — ${String(detail).replace(/\n/g, " ").slice(0, 160)}` : "";
-        lines.push(`[action] ${a.name}${tags ? ` (${tags})` : ""}${suffix}`);
-      }
-
-      lines.push("");
     }
 
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.send(lines.join("\n"));
+    for (const a of allActions) {
+      const sid = a.sessionId ?? "unknown";
+      const d = a.data as Record<string, unknown> ?? {};
+      const raw = d.raw as Record<string, unknown> ?? {};
+      // Reconstruct clean action: prefer data.raw.content as description if stored that way
+      const description = a.description
+        ?? (typeof raw.content === "string" ? raw.content : null)
+        ?? (typeof d.content === "string" ? d.content : null)
+        ?? null;
+      getSession(sid).actions.push({
+        name: a.name,
+        ...(description ? { description } : {}),
+        ...(a.tags?.length ? { tags: (a.tags as string[]).filter((t: string) => t !== "action") } : {}),
+      });
+    }
+
+    for (const l of allLogs) {
+      const sid = (l as Record<string, unknown>).sessionId as string ?? "unknown";
+      getSession(sid).logs.push({
+        ...(l.level ? { level: l.level } : {}),
+        ...(l.message ? { message: l.message } : {}),
+        ...(l.data && Object.keys(l.data as object).length ? { data: l.data } : {}),
+      });
+    }
+
+    const sessions = Array.from(sessionMap.entries()).map(([sessionId, data]) => ({
+      sessionId,
+      ...(data.messages.length ? { messages: data.messages } : {}),
+      ...(data.planning.length ? { planning: data.planning } : {}),
+      ...(data.actions.length ? { actions: data.actions } : {}),
+      ...(data.logs.length ? { logs: data.logs } : {}),
+    }));
+
+    res.json({ projectId, sessions });
   } catch (err: unknown) {
-    res.status(500).send(`# ERROR: ${err instanceof Error ? err.message : "Failed"}`);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed" });
   }
 });
 
