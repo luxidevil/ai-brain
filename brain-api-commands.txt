@@ -1,0 +1,82 @@
+================================================================
+  AGENT BRAIN API — QUICK REFERENCE
+  Brain URL: https://74f2f569-7782-4d55-a9dd-f8bcd381babf-00-3nvaku7jbiace.janeway.replit.dev/api
+  Token: bt_2cfb43103f7a5f34cccbdacff5b4109f4fed198d2635df089af7e1afee6baeba
+================================================================
+
+---- READ FULL BRAIN CONTEXT (paste at start of every session) ----
+
+curl "https://74f2f569-7782-4d55-a9dd-f8bcd381babf-00-3nvaku7jbiace.janeway.replit.dev/api/sync/context?projectId=flipkart-cookie" \
+  -H "Authorization: Bearer bt_2cfb43103f7a5f34cccbdacff5b4109f4fed198d2635df089af7e1afee6baeba"
+
+
+---- SAVE SESSION MEMORY (paste at end of every session) ----
+
+curl -X POST "https://74f2f569-7782-4d55-a9dd-f8bcd381babf-00-3nvaku7jbiace.janeway.replit.dev/api/sync" \
+  -H "Authorization: Bearer bt_2cfb43103f7a5f34cccbdacff5b4109f4fed198d2635df089af7e1afee6baeba" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "projectId": "flipkart-cookie",
+    "sessionId": "session-XXX",
+    "messages": [ ...all messages from this session... ],
+    "planning": [ ...decisions and reasoning... ],
+    "actions":  [ ...files changed, commands run, deployments... ]
+  }'
+
+
+---- CREATE A NEW THOUGHT (new project) ----
+
+curl -X POST "https://74f2f569-7782-4d55-a9dd-f8bcd381babf-00-3nvaku7jbiace.janeway.replit.dev/api/sync" \
+  -H "Authorization: Bearer bt_2cfb43103f7a5f34cccbdacff5b4109f4fed198d2635df089af7e1afee6baeba" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "projectId": "YOUR-NEW-PROJECT-NAME",
+    "sessionId": "session-001",
+    "messages": [ { "role": "system", "content": "Thought initialized." } ]
+  }'
+
+
+---- LIST ALL THOUGHTS (projects in the brain) ----
+
+curl "https://74f2f569-7782-4d55-a9dd-f8bcd381babf-00-3nvaku7jbiace.janeway.replit.dev/api/sync/projects" \
+  -H "Authorization: Bearer bt_2cfb43103f7a5f34cccbdacff5b4109f4fed198d2635df089af7e1afee6baeba"
+
+
+---- LIST ALL SESSIONS FOR A THOUGHT ----
+
+curl "https://74f2f569-7782-4d55-a9dd-f8bcd381babf-00-3nvaku7jbiace.janeway.replit.dev/api/sync/sessions?projectId=flipkart-cookie" \
+  -H "Authorization: Bearer bt_2cfb43103f7a5f34cccbdacff5b4109f4fed198d2635df089af7e1afee6baeba"
+
+
+---- HEALTH CHECK ----
+
+curl "https://74f2f569-7782-4d55-a9dd-f8bcd381babf-00-3nvaku7jbiace.janeway.replit.dev/api/healthz"
+
+
+================================================================
+  PROMPT TO PASTE INTO ANY REPLIT AGENT
+================================================================
+
+Before doing anything, read your full project memory from the Brain API:
+
+curl "https://74f2f569-7782-4d55-a9dd-f8bcd381babf-00-3nvaku7jbiace.janeway.replit.dev/api/sync/context?projectId=flipkart-cookie" \
+  -H "Authorization: Bearer bt_2cfb43103f7a5f34cccbdacff5b4109f4fed198d2635df089af7e1afee6baeba"
+
+This returns the complete history — every message, every decision, every file
+changed, every deployment — in chronological order. Read it fully before
+writing a single line of code. Then continue from where the last session left off.
+
+At the end of this session, save everything back:
+
+curl -X POST "https://74f2f569-7782-4d55-a9dd-f8bcd381babf-00-3nvaku7jbiace.janeway.replit.dev/api/sync" \
+  -H "Authorization: Bearer bt_2cfb43103f7a5f34cccbdacff5b4109f4fed198d2635df089af7e1afee6baeba" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "projectId": "flipkart-cookie",
+    "sessionId": "session-XXX",
+    "messages": [ ...conversation... ],
+    "planning": [ ...decisions... ],
+    "actions":  [ ...what you did... ]
+  }'
+
+================================================================
