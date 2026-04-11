@@ -873,6 +873,175 @@
       color: var(--text-dim);
     }
 
+    .thought-toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+      padding: 12px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    .thought-toolbar .tb-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .thought-toolbar .tb-btn:hover {
+      border-color: var(--accent);
+      background: var(--accent-glow);
+    }
+
+    .thought-toolbar .tb-btn svg { flex-shrink: 0; }
+
+    .prompt-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(4px);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .prompt-modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: 90%;
+      max-width: 700px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .prompt-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .prompt-modal-header h3 {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .prompt-modal-header .close-modal {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px;
+    }
+
+    .prompt-modal-body {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .prompt-modal-body textarea {
+      width: 100%;
+      min-height: 250px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      color: var(--text);
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      resize: vertical;
+    }
+
+    .prompt-modal-body .help-text {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+      line-height: 1.6;
+    }
+
+    .prompt-modal-body .help-text strong {
+      color: var(--text);
+    }
+
+    .prompt-modal-body .tip-box {
+      background: var(--amber-dim);
+      border: 1px solid rgba(251,191,36,0.25);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--amber);
+      margin-top: 12px;
+      line-height: 1.6;
+    }
+
+    .prompt-modal-body .tip-box strong { color: var(--text); }
+
+    .prompt-modal-footer {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+    }
+
+    .import-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 16px;
+    }
+
+    .import-zone:hover, .import-zone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-glow);
+    }
+
+    .import-zone .iz-icon { font-size: 32px; margin-bottom: 8px; }
+    .import-zone .iz-text { font-size: 14px; color: var(--text-dim); }
+    .import-zone .iz-sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+
+    .import-preview {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+
+    .import-preview .ip-stat {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .import-preview .ip-stat:last-child { border-bottom: none; }
+    .import-preview .ip-stat span:first-child { color: var(--text-dim); }
+    .import-preview .ip-stat span:last-child { color: var(--text); font-weight: 600; }
+
     .secrets-panel {
       margin-top: 32px;
     }
@@ -1186,6 +1355,20 @@
             </div>
             <div class="action-row" id="detail-stats-row"></div>
           </div>
+          <div class="thought-toolbar">
+            <button class="tb-btn" onclick="openReadByAI()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+              Read by AI
+            </button>
+            <button class="tb-btn" onclick="openAppendPrompt()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+              Append to Thought
+            </button>
+            <button class="tb-btn" onclick="openImportJSON()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Import JSON
+            </button>
+          </div>
           <div class="detail-tabs">
             <button class="active" onclick="switchDetailTab('all')">All</button>
             <button onclick="switchDetailTab('messages')">Messages</button>
@@ -1199,6 +1382,8 @@
         </div>
       </div>
     </div>
+
+    <div id="prompt-modal-container"></div>
 
     <div id="page-howto" class="page">
       <h2 class="section-title">How To Use Agent Brain</h2>
@@ -1954,6 +2139,391 @@ curl -X POST "https://YOUR-DOMAIN/api/brain/PROJECT-NAME/sync" \
       } else {
         content.classList.add('collapsed');
         btn.textContent = 'Show more';
+      }
+    }
+
+    function closePromptModal() {
+      document.getElementById('prompt-modal-container').innerHTML = '';
+    }
+
+    function openReadByAI() {
+      if (!currentThoughtData) return;
+      const d = currentThoughtData;
+      const thoughtId = document.getElementById('detail-thought-id').textContent;
+
+      let prompt = `You are continuing work on the project "${thoughtId}".\n`;
+      prompt += `Description: ${d.description || 'No description'}\n\n`;
+
+      const msgs = (d.messages || []).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      const actions = (d.items || []).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+      if (msgs.length > 0) {
+        prompt += `=== CONVERSATION HISTORY (${msgs.length} messages) ===\n\n`;
+        let lastSession = '';
+        for (const m of msgs) {
+          if (m.sessionId && m.sessionId !== lastSession) {
+            prompt += `--- Session: ${m.sessionId} ---\n`;
+            lastSession = m.sessionId;
+          }
+          const role = (m.metadata?.type === 'planning') ? 'THINKING' : (m.role || 'user').toUpperCase();
+          prompt += `[${role}]: ${m.content}\n\n`;
+        }
+      }
+
+      if (actions.length > 0) {
+        prompt += `=== ACTIONS TAKEN (${actions.length}) ===\n\n`;
+        for (const a of actions) {
+          prompt += `- ${a.name || 'untitled'}`;
+          if (a.description) prompt += `: ${a.description}`;
+          if (a.data && Object.keys(a.data).length > 0) prompt += `\n  Data: ${JSON.stringify(a.data)}`;
+          prompt += `\n`;
+        }
+      }
+
+      prompt += `\n=== INSTRUCTION ===\nPlease review this context and continue the work. Pick up where the last session left off. If you need to take actions, remember to sync them back to the brain API.`;
+
+      const container = document.getElementById('prompt-modal-container');
+      container.innerHTML = `
+        <div class="prompt-modal-overlay" onclick="if(event.target===this)closePromptModal()">
+          <div class="prompt-modal">
+            <div class="prompt-modal-header">
+              <h3>Read by AI — Copy this prompt</h3>
+              <button class="close-modal" onclick="closePromptModal()">&times;</button>
+            </div>
+            <div class="prompt-modal-body">
+              <p class="help-text">Copy the prompt below and paste it into any AI agent (ChatGPT, Claude, Cursor, etc.) so it can <strong>understand the full context</strong> of this thought and continue the work.</p>
+              <textarea id="read-ai-textarea" readonly>${esc(prompt)}</textarea>
+              <div class="tip-box">
+                <strong>Tip:</strong> If the conversation is very long, you can switch to the Messages tab and copy only the last session. The AI only needs enough context to continue — not every message ever sent.
+              </div>
+            </div>
+            <div class="prompt-modal-footer">
+              <button class="btn btn-sm" onclick="closePromptModal()">Close</button>
+              <button class="btn btn-primary btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('read-ai-textarea').value);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy Prompt',1500)">Copy Prompt</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function openAppendPrompt() {
+      if (!currentThoughtData) return;
+      const thoughtId = document.getElementById('detail-thought-id').textContent;
+
+      const thoughtKey = currentThoughtData.key || 'tk_YOUR-THOUGHT-KEY';
+      const domain = window.location.origin;
+
+      const curlCmd = `curl -X POST ${domain}/api/brain/${encodeURIComponent(thoughtId)}/sync \\
+  -H "Authorization: Bearer ${thoughtKey}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+  "sessionId": "session-NEW",
+  "messages": [
+    {"role": "user", "content": "YOUR MESSAGE HERE"},
+    {"role": "assistant", "content": "ASSISTANT RESPONSE HERE"}
+  ],
+  "actions": [
+    {"name": "action-name", "description": "what was done", "data": {}}
+  ]
+}'`;
+
+      const agentPrompt = `I need you to export our conversation to my brain API.
+
+Run this curl command to append our conversation:
+
+${curlCmd}
+
+Replace the messages array with our actual conversation. Each message should have "role" (user/assistant) and "content".
+Replace "session-NEW" with a descriptive session name like "session-003" or "refactor-auth".
+
+If you can't run curl directly, output the complete JSON body so I can run it myself.`;
+
+      const container = document.getElementById('prompt-modal-container');
+      container.innerHTML = `
+        <div class="prompt-modal-overlay" onclick="if(event.target===this)closePromptModal()">
+          <div class="prompt-modal">
+            <div class="prompt-modal-header">
+              <h3>Append to Thought — "${esc(thoughtId)}"</h3>
+              <button class="close-modal" onclick="closePromptModal()">&times;</button>
+            </div>
+            <div class="prompt-modal-body">
+              <p class="help-text"><strong>Option 1: Ask your AI agent to export</strong><br>Copy the prompt below and paste it into the agent. It will attempt to run the curl command to sync the conversation.</p>
+              <textarea id="append-prompt-textarea" readonly style="min-height: 200px;">${esc(agentPrompt)}</textarea>
+              <div style="display:flex;gap:8px;margin-top:8px;">
+                <button class="btn btn-primary btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('append-prompt-textarea').value);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy Prompt',1500)">Copy Prompt</button>
+              </div>
+
+              <div class="tip-box" style="margin-top:16px;">
+                <strong>If the agent refuses to run curl:</strong><br>
+                1. Ask it to "output the full JSON body of the conversation" instead<br>
+                2. Copy that JSON and use the <strong>Import JSON</strong> button here to upload it<br>
+                3. Or paste the JSON into the manual input below and click Send
+              </div>
+
+              <div style="margin-top:20px; border-top: 1px solid var(--border); padding-top:16px;">
+                <p class="help-text"><strong>Option 2: Paste JSON manually</strong><br>If your agent output JSON but couldn't run curl, paste it here.</p>
+                <div style="margin-bottom:8px;">
+                  <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px;">Session Name</label>
+                  <input type="text" id="manual-session-name" placeholder="e.g. session-003" style="width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+                </div>
+                <textarea id="manual-json-input" placeholder='Paste JSON here... e.g.\n{\n  "messages": [\n    {"role":"user","content":"hello"},\n    {"role":"assistant","content":"hi there"}\n  ]\n}' style="min-height:120px;"></textarea>
+                <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+                  <button class="btn btn-primary btn-sm" onclick="sendManualJSON()">Send to Brain</button>
+                  <span id="manual-send-status" style="font-size:12px;color:var(--text-dim);"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    async function sendManualJSON() {
+      const thoughtId = document.getElementById('detail-thought-id').textContent;
+      const sessionName = document.getElementById('manual-session-name').value.trim() || 'manual-import';
+      const jsonText = document.getElementById('manual-json-input').value.trim();
+      const status = document.getElementById('manual-send-status');
+
+      if (!jsonText) {
+        status.textContent = 'Please paste JSON first';
+        status.style.color = 'var(--red)';
+        return;
+      }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(jsonText);
+      } catch (e) {
+        status.textContent = 'Invalid JSON — check the format';
+        status.style.color = 'var(--red)';
+        return;
+      }
+
+      const body = {
+        sessionId: sessionName,
+        messages: parsed.messages || [],
+        planning: parsed.planning || [],
+        actions: parsed.actions || [],
+        logs: parsed.logs || [],
+      };
+
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].role) {
+        body.messages = parsed;
+      }
+
+      status.textContent = 'Sending...';
+      status.style.color = 'var(--text-dim)';
+
+      try {
+        const res = await fetch(BASE + '/api/brain/' + encodeURIComponent(thoughtId) + '/sync', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        });
+
+        if (res.ok) {
+          const result = await res.json();
+          status.textContent = 'Saved! ' + JSON.stringify(result.results || {});
+          status.style.color = 'var(--green)';
+          setTimeout(() => {
+            closePromptModal();
+            openThought(thoughtId);
+          }, 1500);
+        } else {
+          const err = await res.json();
+          status.textContent = err.error || 'Failed to save';
+          status.style.color = 'var(--red)';
+        }
+      } catch (e) {
+        status.textContent = 'Network error — check connection';
+        status.style.color = 'var(--red)';
+      }
+    }
+
+    let importFileData = null;
+
+    function openImportJSON() {
+      if (!currentThoughtData) return;
+      const thoughtId = document.getElementById('detail-thought-id').textContent;
+      importFileData = null;
+
+      const container = document.getElementById('prompt-modal-container');
+      container.innerHTML = `
+        <div class="prompt-modal-overlay" onclick="if(event.target===this)closePromptModal()">
+          <div class="prompt-modal">
+            <div class="prompt-modal-header">
+              <h3>Import JSON — "${esc(thoughtId)}"</h3>
+              <button class="close-modal" onclick="closePromptModal()">&times;</button>
+            </div>
+            <div class="prompt-modal-body">
+              <p class="help-text">Upload a JSON file of your chat history. This is useful when your AI agent can't run curl directly — just ask it to <strong>"export the conversation as JSON"</strong> and save the file.</p>
+
+              <div class="import-zone" id="import-drop-zone" onclick="document.getElementById('import-file-input').click()">
+                <div class="iz-icon">&#128229;</div>
+                <div class="iz-text">Click to select or drag & drop a JSON file</div>
+                <div class="iz-sub">Accepts .json files with messages, actions, or full sync format</div>
+              </div>
+              <input type="file" id="import-file-input" accept=".json,application/json" style="display:none" onchange="handleImportFile(this.files[0])">
+
+              <div style="margin-bottom:12px;">
+                <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px;">Session Name (for your reference)</label>
+                <input type="text" id="import-session-name" placeholder="e.g. session-003, cursor-chat, claude-export" style="width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+              </div>
+
+              <div id="import-preview-area"></div>
+
+              <div class="tip-box">
+                <strong>Accepted formats:</strong><br>
+                &bull; Array of messages: <code>[{"role":"user","content":"..."},...]</code><br>
+                &bull; Sync format: <code>{"messages":[...],"actions":[...]}</code><br>
+                &bull; ChatGPT/Claude export: auto-detected and converted
+              </div>
+            </div>
+            <div class="prompt-modal-footer">
+              <button class="btn btn-sm" onclick="closePromptModal()">Cancel</button>
+              <button class="btn btn-primary btn-sm" id="import-send-btn" disabled onclick="sendImportData()">Import to Brain</button>
+              <span id="import-status" style="font-size:12px;color:var(--text-dim);"></span>
+            </div>
+          </div>
+        </div>`;
+
+      const zone = document.getElementById('import-drop-zone');
+      zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+      zone.addEventListener('dragleave', () => { zone.classList.remove('dragover'); });
+      zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) handleImportFile(e.dataTransfer.files[0]);
+      });
+    }
+
+    function handleImportFile(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const raw = JSON.parse(e.target.result);
+          importFileData = normalizeImportData(raw);
+
+          const previewArea = document.getElementById('import-preview-area');
+          previewArea.innerHTML = `
+            <div class="import-preview">
+              <div class="ip-stat"><span>File</span><span>${esc(file.name)}</span></div>
+              <div class="ip-stat"><span>Messages</span><span>${importFileData.messages.length}</span></div>
+              <div class="ip-stat"><span>Actions</span><span>${importFileData.actions.length}</span></div>
+              <div class="ip-stat"><span>Planning</span><span>${importFileData.planning.length}</span></div>
+              <div class="ip-stat"><span>Logs</span><span>${importFileData.logs.length}</span></div>
+            </div>`;
+
+          document.getElementById('import-send-btn').disabled = false;
+          document.getElementById('import-drop-zone').innerHTML = `
+            <div class="iz-icon" style="color:var(--green);">&#10003;</div>
+            <div class="iz-text" style="color:var(--green);">File loaded: ${esc(file.name)}</div>
+            <div class="iz-sub">Click to choose a different file</div>`;
+        } catch (err) {
+          document.getElementById('import-preview-area').innerHTML = `<div class="tip-box" style="border-color:var(--red);color:var(--red);">Failed to parse JSON: ${esc(err.message)}</div>`;
+          importFileData = null;
+          document.getElementById('import-send-btn').disabled = true;
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function normalizeImportData(raw) {
+      let messages = [], actions = [], planning = [], logs = [];
+
+      if (Array.isArray(raw)) {
+        if (raw.length > 0 && raw[0].role) {
+          messages = raw;
+        } else if (raw.length > 0 && raw[0].mapping) {
+          for (const item of raw) {
+            const mapping = item.mapping || {};
+            for (const nodeId of Object.keys(mapping)) {
+              const node = mapping[nodeId];
+              if (node?.message?.content?.parts) {
+                messages.push({
+                  role: node.message.author?.role || 'user',
+                  content: node.message.content.parts.join('\n'),
+                });
+              }
+            }
+          }
+        }
+      } else if (raw && typeof raw === 'object') {
+        if (raw.messages) messages = raw.messages;
+        if (raw.actions) actions = raw.actions;
+        if (raw.planning) planning = raw.planning;
+        if (raw.logs) logs = raw.logs;
+
+        if (raw.mapping) {
+          for (const nodeId of Object.keys(raw.mapping)) {
+            const node = raw.mapping[nodeId];
+            if (node?.message?.content?.parts) {
+              messages.push({
+                role: node.message.author?.role || 'user',
+                content: node.message.content.parts.join('\n'),
+              });
+            }
+          }
+        }
+
+        if (raw.chat_messages && Array.isArray(raw.chat_messages)) {
+          messages = raw.chat_messages.map(m => ({
+            role: m.sender === 'human' ? 'user' : 'assistant',
+            content: typeof m.text === 'string' ? m.text : (m.content?.[0]?.text || JSON.stringify(m)),
+          }));
+        }
+      }
+
+      return { messages, actions, planning, logs };
+    }
+
+    async function sendImportData() {
+      if (!importFileData) return;
+      const thoughtId = document.getElementById('detail-thought-id').textContent;
+      const sessionName = document.getElementById('import-session-name').value.trim() || 'json-import-' + Date.now();
+      const status = document.getElementById('import-status');
+      const btn = document.getElementById('import-send-btn');
+
+      btn.disabled = true;
+      status.textContent = 'Importing...';
+      status.style.color = 'var(--text-dim)';
+
+      const body = {
+        sessionId: sessionName,
+        ...importFileData,
+      };
+
+      try {
+        const res = await fetch(BASE + '/api/brain/' + encodeURIComponent(thoughtId) + '/sync', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        });
+
+        if (res.ok) {
+          const result = await res.json();
+          const saved = result.results || {};
+          status.textContent = `Imported! Messages: ${saved.messages?.saved||0}, Actions: ${saved.actions?.saved||0}`;
+          status.style.color = 'var(--green)';
+          setTimeout(() => {
+            closePromptModal();
+            openThought(thoughtId);
+          }, 1500);
+        } else {
+          const err = await res.json();
+          status.textContent = err.error || 'Import failed';
+          status.style.color = 'var(--red)';
+          btn.disabled = false;
+        }
+      } catch (e) {
+        status.textContent = 'Network error';
+        status.style.color = 'var(--red)';
+        btn.disabled = false;
       }
     }
 
