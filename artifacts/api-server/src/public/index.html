@@ -748,6 +748,64 @@
       color: var(--text-dim);
     }
 
+    .secrets-panel {
+      margin-top: 32px;
+    }
+
+    .secret-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+
+    .secret-row .secret-key {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      min-width: 120px;
+    }
+
+    .secret-row .secret-value {
+      flex: 1;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      color: var(--text-dim);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .secret-row .secret-actions {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .secret-row .secret-scope {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+
+    .add-secret-form {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .add-secret-form input {
+      flex: 1;
+      min-width: 120px;
+    }
+
     @media (max-width: 640px) {
       .hero h1 { font-size: 32px; }
       .hero p { font-size: 16px; }
@@ -969,6 +1027,26 @@
               <div class="big-icon">Loading...</div>
             </div>
           </div>
+
+          <div class="secrets-panel">
+            <div class="flex-between" style="margin-bottom: 16px;">
+              <div>
+                <h2 class="section-title" style="font-size: 22px;">Global Secrets</h2>
+                <p style="color: var(--text-dim); font-size: 13px; margin: 0;">Available to all thoughts. Thought-level secrets override these.</p>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="toggleBrainSecrets()">
+                <span id="brain-secrets-toggle-label">Show</span>
+              </button>
+            </div>
+            <div id="brain-secrets-section" style="display: none;">
+              <div class="add-secret-form">
+                <input type="text" id="brain-secret-key" placeholder="SECRET_KEY" style="text-transform: uppercase;">
+                <input type="text" id="brain-secret-value" placeholder="Secret value">
+                <button class="btn btn-primary btn-sm" onclick="addBrainSecret()">Add</button>
+              </div>
+              <div id="brain-secrets-list"></div>
+            </div>
+          </div>
         </div>
 
         <div id="thought-detail-view" style="display: none;">
@@ -988,6 +1066,7 @@
             <button onclick="switchDetailTab('messages')">Messages</button>
             <button onclick="switchDetailTab('actions')">Actions</button>
             <button onclick="switchDetailTab('logs')">Logs</button>
+            <button onclick="switchDetailTab('secrets')">Secrets</button>
           </div>
           <div id="detail-content">
             <div class="empty-state">Loading...</div>
@@ -1604,7 +1683,12 @@ curl -X POST "https://YOUR-DOMAIN/api/brain/PROJECT-NAME/sync" \
       else if (tab === 'messages') tabs[1].classList.add('active');
       else if (tab === 'actions') tabs[2].classList.add('active');
       else if (tab === 'logs') tabs[3].classList.add('active');
-      renderDetailTab();
+      else if (tab === 'secrets') tabs[4].classList.add('active');
+      if (tab === 'secrets') {
+        renderThoughtSecrets();
+      } else {
+        renderDetailTab();
+      }
     }
 
     function renderDetailTab() {
@@ -1707,6 +1791,187 @@ curl -X POST "https://YOUR-DOMAIN/api/brain/PROJECT-NAME/sync" \
         content.classList.add('collapsed');
         btn.textContent = 'Show more';
       }
+    }
+
+    let brainSecretsVisible = false;
+
+    function toggleBrainSecrets() {
+      brainSecretsVisible = !brainSecretsVisible;
+      document.getElementById('brain-secrets-section').style.display = brainSecretsVisible ? 'block' : 'none';
+      document.getElementById('brain-secrets-toggle-label').textContent = brainSecretsVisible ? 'Hide' : 'Show';
+      if (brainSecretsVisible) loadBrainSecrets();
+    }
+
+    async function loadBrainSecrets() {
+      const container = document.getElementById('brain-secrets-list');
+      try {
+        const res = await fetch(BASE + '/api/secrets/brain', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const data = await res.json();
+        if (!data.secrets || data.secrets.length === 0) {
+          container.innerHTML = '<div style="color: var(--text-dim); font-size: 13px; padding: 12px 0;">No global secrets yet. Add one above.</div>';
+          return;
+        }
+        container.innerHTML = data.secrets.map(s => `
+          <div class="secret-row">
+            <span class="secret-key">${esc(s.key)}</span>
+            <span class="secret-value" id="bsv-${esc(s.key)}">${'*'.repeat(Math.min(s.value.length, 20))}</span>
+            <div class="secret-actions">
+              <button class="copy-btn" onclick="revealBrainSecret('${esc(s.key)}', '${esc(s.value.replace(/'/g, "\\'"))}')">Reveal</button>
+              <button class="copy-btn" onclick="copyText('${esc(s.value.replace(/'/g, "\\'"))}')">Copy</button>
+              <button class="copy-btn" style="color: var(--red);" onclick="deleteBrainSecret('${esc(s.key)}')">Delete</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        container.innerHTML = '<div class="alert alert-error">Failed to load secrets</div>';
+      }
+    }
+
+    function revealBrainSecret(key, value) {
+      const el = document.getElementById('bsv-' + key);
+      if (el) {
+        if (el.dataset.revealed === '1') {
+          el.textContent = '*'.repeat(Math.min(value.length, 20));
+          el.dataset.revealed = '0';
+        } else {
+          el.textContent = value;
+          el.dataset.revealed = '1';
+        }
+      }
+    }
+
+    async function addBrainSecret() {
+      const keyEl = document.getElementById('brain-secret-key');
+      const valEl = document.getElementById('brain-secret-value');
+      const key = keyEl.value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+      const value = valEl.value;
+
+      if (!key || !value) return;
+
+      try {
+        const res = await fetch(BASE + '/api/secrets/brain/' + encodeURIComponent(key), {
+          method: 'PUT',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value }),
+        });
+        if (res.ok) {
+          keyEl.value = '';
+          valEl.value = '';
+          loadBrainSecrets();
+        }
+      } catch (e) {}
+    }
+
+    async function deleteBrainSecret(key) {
+      if (!confirm('Delete secret "' + key + '"?')) return;
+      try {
+        await fetch(BASE + '/api/secrets/brain/' + encodeURIComponent(key), {
+          method: 'DELETE',
+          headers: { 'Authorization': 'Bearer ' + token },
+        });
+        loadBrainSecrets();
+      } catch (e) {}
+    }
+
+    async function renderThoughtSecrets() {
+      const container = document.getElementById('detail-content');
+      if (!currentThoughtData) return;
+      const thoughtId = currentThoughtData.thoughtId;
+
+      container.innerHTML = `
+        <div style="margin-bottom: 20px;">
+          <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 16px;">
+            Thought-level secrets override global (brain) secrets with the same key. Agents accessing this thought via its key will see the merged set.
+          </p>
+          <div class="add-secret-form">
+            <input type="text" id="thought-secret-key" placeholder="SECRET_KEY" style="text-transform: uppercase;">
+            <input type="text" id="thought-secret-value" placeholder="Secret value">
+            <button class="btn btn-primary btn-sm" onclick="addThoughtSecret('${esc(thoughtId)}')">Add</button>
+          </div>
+        </div>
+        <div id="thought-secrets-list"><div style="color: var(--text-dim); padding: 20px; text-align: center;">Loading secrets...</div></div>
+      `;
+
+      try {
+        const res = await fetch(BASE + '/api/secrets/thought/' + encodeURIComponent(thoughtId), {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const data = await res.json();
+        const list = document.getElementById('thought-secrets-list');
+
+        if (!data.secrets || data.secrets.length === 0) {
+          list.innerHTML = '<div style="color: var(--text-dim); font-size: 13px; padding: 12px 0;">No secrets for this thought. Global secrets still apply if set.</div>';
+          return;
+        }
+
+        list.innerHTML = data.secrets.map(s => {
+          const scopeBadge = s.scope === 'brain'
+            ? '<span class="secret-scope badge-amber">global</span>'
+            : '<span class="secret-scope badge-green">thought</span>';
+          return `
+            <div class="secret-row">
+              <span class="secret-key">${esc(s.key)}</span>
+              ${scopeBadge}
+              <span class="secret-value" id="tsv-${esc(s.key)}">${'*'.repeat(Math.min(s.value.length, 20))}</span>
+              <div class="secret-actions">
+                <button class="copy-btn" onclick="revealThoughtSecret('${esc(s.key)}', '${esc(s.value.replace(/'/g, "\\'"))}')">Reveal</button>
+                <button class="copy-btn" onclick="copyText('${esc(s.value.replace(/'/g, "\\'"))}')">Copy</button>
+                ${s.scope === 'thought' ? `<button class="copy-btn" style="color: var(--red);" onclick="deleteThoughtSecret('${esc(thoughtId)}', '${esc(s.key)}')">Delete</button>` : ''}
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (e) {
+        document.getElementById('thought-secrets-list').innerHTML = '<div class="alert alert-error">Failed to load secrets</div>';
+      }
+    }
+
+    function revealThoughtSecret(key, value) {
+      const el = document.getElementById('tsv-' + key);
+      if (el) {
+        if (el.dataset.revealed === '1') {
+          el.textContent = '*'.repeat(Math.min(value.length, 20));
+          el.dataset.revealed = '0';
+        } else {
+          el.textContent = value;
+          el.dataset.revealed = '1';
+        }
+      }
+    }
+
+    async function addThoughtSecret(thoughtId) {
+      const keyEl = document.getElementById('thought-secret-key');
+      const valEl = document.getElementById('thought-secret-value');
+      const key = keyEl.value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+      const value = valEl.value;
+
+      if (!key || !value) return;
+
+      try {
+        const res = await fetch(BASE + '/api/secrets/thought/' + encodeURIComponent(thoughtId) + '/' + encodeURIComponent(key), {
+          method: 'PUT',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value }),
+        });
+        if (res.ok) {
+          keyEl.value = '';
+          valEl.value = '';
+          renderThoughtSecrets();
+        }
+      } catch (e) {}
+    }
+
+    async function deleteThoughtSecret(thoughtId, key) {
+      if (!confirm('Delete secret "' + key + '" from this thought?')) return;
+      try {
+        await fetch(BASE + '/api/secrets/thought/' + encodeURIComponent(thoughtId) + '/' + encodeURIComponent(key), {
+          method: 'DELETE',
+          headers: { 'Authorization': 'Bearer ' + token },
+        });
+        renderThoughtSecrets();
+      } catch (e) {}
     }
 
     function esc(str) {

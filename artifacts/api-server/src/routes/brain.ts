@@ -3,6 +3,7 @@ import { Message } from "../models/message";
 import { Item } from "../models/item";
 import { Log } from "../models/log";
 import { Thought } from "../models/thought";
+import { Secret } from "../models/secret";
 import { getUserConnection } from "../lib/connectionPool";
 import crypto from "crypto";
 
@@ -30,7 +31,7 @@ async function getModels(req: Request) {
   if (mongoUri) {
     return getUserConnection(mongoUri);
   }
-  return { Message, Item, Log, Thought };
+  return { Message, Item, Log, Thought, Secret };
 }
 
 router.get("/", async (req, res) => {

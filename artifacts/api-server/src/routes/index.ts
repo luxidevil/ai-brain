@@ -3,6 +3,7 @@ import swaggerUi from "swagger-ui-express";
 import healthRouter from "./health";
 import authRouter from "./auth";
 import brainRouter from "./brain";
+import secretsRouter from "./secrets";
 import itemsRouter from "./items";
 import logsRouter from "./logs";
 import messagesRouter from "./messages";
@@ -27,6 +28,7 @@ router.get("/docs.json", (_req, res) => {
 router.use(healthRouter);
 router.use("/auth", authRouter);
 router.use("/brain", brainRouter);
+router.use("/secrets", secretsRouter);
 router.use("/items", itemsRouter);
 router.use("/logs", logsRouter);
 router.use("/messages", messagesRouter);

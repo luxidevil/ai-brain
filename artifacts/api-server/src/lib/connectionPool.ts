@@ -39,11 +39,19 @@ const thoughtSchemaDefinition = {
   key: { type: String, required: true, unique: true, index: true },
 };
 
+const secretSchemaDefinition = {
+  key: { type: String, required: true, trim: true },
+  value: { type: String, required: true },
+  scope: { type: String, enum: ["brain", "thought"], required: true },
+  thoughtId: { type: String, default: null, index: true },
+};
+
 interface UserModels {
   Message: mongoose.Model<unknown>;
   Item: mongoose.Model<unknown>;
   Log: mongoose.Model<unknown>;
   Thought: mongoose.Model<unknown>;
+  Secret: mongoose.Model<unknown>;
 }
 
 interface PoolEntry {
@@ -61,13 +69,16 @@ function createModels(conn: mongoose.Connection): UserModels {
   const itemSchema = new mongoose.Schema(itemSchemaDefinition, { timestamps: true });
   const logSchema = new mongoose.Schema(logSchemaDefinition, { timestamps: true });
   const thoughtSchema = new mongoose.Schema(thoughtSchemaDefinition, { timestamps: true });
+  const secretSchema = new mongoose.Schema(secretSchemaDefinition, { timestamps: true });
+  secretSchema.index({ scope: 1, thoughtId: 1, key: 1 }, { unique: true });
 
   const Message = conn.models.Message || conn.model("Message", msgSchema);
   const Item = conn.models.Item || conn.model("Item", itemSchema);
   const Log = conn.models.Log || conn.model("Log", logSchema);
   const Thought = conn.models.Thought || conn.model("Thought", thoughtSchema);
+  const Secret = conn.models.Secret || conn.model("Secret", secretSchema);
 
-  return { Message, Item, Log, Thought };
+  return { Message, Item, Log, Thought, Secret };
 }
 
 export async function getUserConnection(mongoUri: string): Promise<UserModels> {
