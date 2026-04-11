@@ -39,7 +39,6 @@ router.post("/", async (req, res) => {
     });
   }
 
-  // ── Messages ─────────────────────────────────────────────────
   if (messages.length > 0) {
     try {
       const docs = messages.map((m: Record<string, unknown>) => ({
@@ -55,21 +54,27 @@ router.post("/", async (req, res) => {
     }
   }
 
-  // ── Planning steps (stored as system messages) ────────────────
   if (planning.length > 0) {
     try {
-      const docs = planning.map((p: Record<string, unknown>) => ({
-        role: "system",
-        content: p.summary ?? p.content ?? p.description ?? JSON.stringify(p),
-        projectId: p.projectId ?? projectId ?? null,
-        sessionId: p.sessionId ?? sessionId ?? null,
-        agentId: p.agentId ?? null,
-        metadata: {
-          type: "planning",
-          durationMs: p.durationMs ?? null,
-          ...(typeof p.metadata === "object" ? p.metadata as object : {}),
-        },
-      }));
+      const docs = planning.map((p: Record<string, unknown>) => {
+        const content = typeof p === "string"
+          ? p
+          : p.content ?? p.raw ?? p.text ?? p.thinking ?? JSON.stringify(p);
+        return {
+          role: "system",
+          content,
+          projectId: p.projectId ?? projectId ?? null,
+          sessionId: p.sessionId ?? sessionId ?? null,
+          agentId: (typeof p === "object" ? p.agentId : null) ?? null,
+          metadata: {
+            type: "planning",
+            step: typeof p === "object" ? p.step ?? null : null,
+            durationMs: typeof p === "object" ? p.durationMs ?? null : null,
+            raw: typeof p === "object" ? p : null,
+            ...(typeof p === "object" && typeof p.metadata === "object" ? (p.metadata as object) : {}),
+          },
+        };
+      });
       const created = await Message.insertMany(docs, { ordered: false });
       results.planning = { saved: created.length };
     } catch (err: unknown) {
@@ -78,7 +83,6 @@ router.post("/", async (req, res) => {
     }
   }
 
-  // ── Actions (stored as Items) ─────────────────────────────────
   if (actions.length > 0) {
     try {
       const docs = actions.map((a: Record<string, unknown>) => ({
@@ -98,7 +102,6 @@ router.post("/", async (req, res) => {
     }
   }
 
-  // ── Logs ──────────────────────────────────────────────────────
   if (logs.length > 0) {
     try {
       const docs = (logs as Record<string, unknown>[]).map((l) => ({
@@ -114,137 +117,114 @@ router.post("/", async (req, res) => {
     }
   }
 
-  const totalSaved = Object.values(results).reduce(
-    (sum, r) => sum + ((r as { saved: number }).saved ?? 0),
-    0
-  );
-
-  res.status(errors.length === 0 ? 201 : 207).json({
+  const status = errors.length === 0 ? 201 : 207;
+  res.status(status).json({
     ok: errors.length === 0,
-    projectId: projectId ?? null,
-    sessionId: sessionId ?? null,
-    totalSaved,
     results,
-    ...(errors.length > 0 && { errors }),
+    ...(errors.length > 0 ? { errors } : {}),
   });
 });
 
 /**
  * GET /sync/read
- * Read everything for a project session in one call.
- * Filter by projectId and/or sessionId.
+ * Read all data for a given sessionId (and optionally projectId).
  */
 router.get("/read", async (req, res) => {
-  const { projectId, sessionId, limit = "50" } = req.query as Record<string, string>;
-  const lim = Math.min(Number(limit), 200);
+  const { sessionId, projectId } = req.query as Record<string, string>;
+
+  if (!sessionId && !projectId) {
+    return res.status(400).json({ error: "sessionId or projectId is required" });
+  }
 
   try {
     const filter: Record<string, unknown> = {};
     if (projectId) filter.projectId = projectId;
     if (sessionId) filter.sessionId = sessionId;
 
-    const [allMessages, actions, logs] = await Promise.all([
-      Message.find(filter).sort({ createdAt: 1 }).limit(lim),
-      Item.find(filter).sort({ createdAt: -1 }).limit(lim),
-      Log.find(filter).sort({ createdAt: -1 }).limit(lim),
+    const [messages, items, logs] = await Promise.all([
+      Message.find(filter).sort({ createdAt: 1 }),
+      Item.find({ ...filter, tags: "action" }).sort({ createdAt: 1 }),
+      Log.find(filter).sort({ createdAt: 1 }),
     ]);
-
-    const messages = allMessages.filter((m) => m.metadata?.type !== "planning");
-    const planning = allMessages.filter((m) => m.metadata?.type === "planning");
 
     res.json({
       projectId: projectId ?? null,
       sessionId: sessionId ?? null,
-      messages: { data: messages, total: messages.length },
-      planning: { data: planning, total: planning.length },
-      actions: { data: actions, total: actions.length },
-      logs: { data: logs, total: logs.length },
+      messages,
+      actions: items,
+      logs,
+      totals: {
+        messages: messages.length,
+        actions: items.length,
+        logs: logs.length,
+      },
     });
   } catch (err: unknown) {
-    res.status(500).json({ error: err instanceof Error ? err.message : "Read failed" });
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed" });
   }
 });
 
 /**
  * GET /sync/context
- * Returns ALL brain data for a project in the exact same shape it was written (POST /sync),
- * grouped by sessionId — so the read format mirrors the write format perfectly.
- * Strips MongoDB metadata (_id, __v, createdAt, updatedAt).
+ * Returns a full chronological timeline of all events for a projectId.
  */
 router.get("/context", async (req, res) => {
   const { projectId } = req.query as Record<string, string>;
+
   if (!projectId) {
-    return res.status(400).json({ error: "?projectId= is required" });
+    return res.status(400).json({ error: "projectId is required" });
   }
 
   try {
     const filter = { projectId };
 
-    const [allMessages, allActions, allLogs] = await Promise.all([
-      Message.find(filter).sort({ createdAt: 1 }).select("role content sessionId metadata agentId createdAt"),
-      Item.find(filter).sort({ createdAt: 1 }).select("name description tags data sessionId createdAt"),
-      Log.find(filter).sort({ createdAt: 1 }).select("level message sessionId data createdAt"),
+    const [messages, items, logs] = await Promise.all([
+      Message.find(filter).sort({ createdAt: 1 }),
+      Item.find({ ...filter, tags: "action" }).sort({ createdAt: 1 }),
+      Log.find(filter).sort({ createdAt: 1 }),
     ]);
 
-    // Build a flat chronological timeline — all events sorted by createdAt
-    type TimelineEvent =
-      | { type: "message"; session: string; role: string; content: string; agentId?: string; _ts: Date }
-      | { type: "planning"; session: string; content: string; agentId?: string; _ts: Date }
-      | { type: "action"; session: string; name: string; description?: string; _ts: Date }
-      | { type: "log"; session: string; level?: string; message?: string; _ts: Date };
+    const timeline: Array<Record<string, unknown> & { _ts?: Date }> = [];
 
-    const timeline: TimelineEvent[] = [];
-
-    for (const m of allMessages) {
-      const isPlanning = m.metadata?.type === "planning";
-      if (isPlanning) {
-        timeline.push({
-          type: "planning",
-          session: m.sessionId ?? "unknown",
-          content: m.content ?? "",
-          ...(m.agentId ? { agentId: m.agentId } : {}),
-          _ts: (m as unknown as { createdAt: Date }).createdAt,
-        });
-      } else {
-        timeline.push({
-          type: "message",
-          session: m.sessionId ?? "unknown",
-          role: m.role ?? "system",
-          content: m.content ?? "",
-          ...(m.agentId ? { agentId: m.agentId } : {}),
-          _ts: (m as unknown as { createdAt: Date }).createdAt,
-        });
-      }
+    for (const msg of messages) {
+      const doc = msg.toObject() as Record<string, unknown> & { createdAt?: Date; metadata?: Record<string, unknown> };
+      timeline.push({
+        type: doc.metadata && typeof doc.metadata === "object" && (doc.metadata as Record<string, unknown>).type === "planning" ? "planning" : "message",
+        role: doc.role,
+        content: doc.content,
+        session: doc.sessionId ?? "unknown",
+        ...(doc.agentId ? { agentId: doc.agentId } : {}),
+        _ts: doc.createdAt,
+      });
     }
 
-    for (const a of allActions) {
-      const d = a.data as Record<string, unknown> ?? {};
-      const raw = d.raw as Record<string, unknown> ?? {};
-      const description = a.description
-        ?? (typeof raw.content === "string" ? raw.content : null)
-        ?? (typeof d.content === "string" ? d.content : null)
-        ?? undefined;
+    for (const item of items) {
+      const doc = item.toObject() as Record<string, unknown> & { createdAt?: Date };
       timeline.push({
         type: "action",
-        session: a.sessionId ?? "unknown",
-        name: a.name,
-        ...(description ? { description } : {}),
-        _ts: (a as unknown as { createdAt: Date }).createdAt,
+        name: doc.name,
+        description: doc.description,
+        data: doc.data,
+        session: doc.sessionId ?? "unknown",
+        _ts: doc.createdAt,
       });
     }
 
-    for (const l of allLogs) {
-      const logDoc = l as unknown as { sessionId?: string; level?: string; message?: string; createdAt: Date };
+    for (const logDoc of logs) {
+      const doc = logDoc.toObject() as Record<string, unknown> & { createdAt?: Date; level?: string; message?: string };
       timeline.push({
         type: "log",
-        session: logDoc.sessionId ?? "unknown",
-        ...(logDoc.level ? { level: logDoc.level } : {}),
-        ...(logDoc.message ? { message: logDoc.message } : {}),
-        _ts: logDoc.createdAt,
+        method: doc.method,
+        path: doc.path,
+        statusCode: doc.statusCode,
+        durationMs: doc.durationMs,
+        session: doc.sessionId ?? "unknown",
+        ...(doc.level ? { level: doc.level } : {}),
+        ...(doc.message ? { message: doc.message } : {}),
+        _ts: doc.createdAt,
       });
     }
 
-    // Sort everything chronologically, then strip internal _ts field
     timeline.sort((a, b) => (a._ts?.getTime?.() ?? 0) - (b._ts?.getTime?.() ?? 0));
     const events = timeline.map(({ _ts: _stripped, ...e }) => e);
 
