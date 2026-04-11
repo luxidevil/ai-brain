@@ -65,9 +65,9 @@ function Badge({ children, color = "blue" }: { children: React.ReactNode; color?
   );
 }
 
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function Card({ children, className = "", ...rest }: { children: React.ReactNode; className?: string } & React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={`bg-white border border-gray-200 rounded-xl shadow-sm ${className}`}>
+    <div className={`bg-white border border-gray-200 rounded-xl shadow-sm ${className}`} {...rest}>
       {children}
     </div>
   );
