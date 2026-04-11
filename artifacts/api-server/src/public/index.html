@@ -622,6 +622,132 @@
     .health-dot.online { background: var(--green); box-shadow: 0 0 8px var(--green); }
     .health-dot.offline { background: var(--red); box-shadow: 0 0 8px var(--red); }
 
+    .thought-card { cursor: pointer; }
+
+    .detail-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 14px;
+      cursor: pointer;
+      padding: 8px 0;
+      margin-bottom: 16px;
+      transition: color 0.2s;
+    }
+
+    .detail-back:hover { color: var(--text); }
+
+    .detail-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .detail-header h2 { font-size: 24px; font-weight: 700; }
+
+    .detail-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 20px;
+      gap: 0;
+    }
+
+    .detail-tabs button {
+      background: none;
+      border: none;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-dim);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .detail-tabs button.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .detail-tabs button:hover { color: var(--text); }
+
+    .timeline-entry {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 10px;
+    }
+
+    .timeline-entry .entry-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    .timeline-entry .entry-header .role-badge {
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .role-user { background: var(--accent-glow); color: var(--accent); }
+    .role-assistant { background: var(--green-dim); color: var(--green); }
+    .role-system { background: var(--amber-dim); color: var(--amber); }
+    .role-agent { background: rgba(167,139,250,0.15); color: var(--purple); }
+
+    .timeline-entry .entry-content {
+      font-size: 14px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .timeline-entry .entry-content.collapsed {
+      max-height: 80px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .timeline-entry .entry-content.collapsed::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 40px;
+      background: linear-gradient(transparent, var(--surface-2));
+    }
+
+    .expand-btn {
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-size: 12px;
+      cursor: pointer;
+      padding: 4px 0;
+      margin-top: 4px;
+    }
+
+    .detail-empty {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-dim);
+    }
+
     @media (max-width: 640px) {
       .hero h1 { font-size: 32px; }
       .hero p { font-size: 16px; }
@@ -837,9 +963,34 @@
           </div>
         </div>
 
-        <div id="thoughts-container">
-          <div class="empty-state">
-            <div class="big-icon">Loading...</div>
+        <div id="thoughts-list-view">
+          <div id="thoughts-container">
+            <div class="empty-state">
+              <div class="big-icon">Loading...</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="thought-detail-view" style="display: none;">
+          <button class="detail-back" onclick="backToList()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+            Back to Thoughts
+          </button>
+          <div class="detail-header">
+            <div>
+              <h2 id="detail-thought-id"></h2>
+              <div style="color: var(--text-dim); font-size: 14px;" id="detail-thought-desc"></div>
+            </div>
+            <div class="action-row" id="detail-stats-row"></div>
+          </div>
+          <div class="detail-tabs">
+            <button class="active" onclick="switchDetailTab('all')">All</button>
+            <button onclick="switchDetailTab('messages')">Messages</button>
+            <button onclick="switchDetailTab('actions')">Actions</button>
+            <button onclick="switchDetailTab('logs')">Logs</button>
+          </div>
+          <div id="detail-content">
+            <div class="empty-state">Loading...</div>
           </div>
         </div>
       </div>
@@ -1295,13 +1446,13 @@ curl -X POST "https://YOUR-DOMAIN/api/brain/PROJECT-NAME/sync" \
         }
 
         container.innerHTML = '<div class="thought-list">' + data.thoughts.map(t => `
-          <div class="thought-card">
+          <div class="thought-card" onclick="openThought('${esc(t.thoughtId)}')">
             <div class="info">
               <h4>${esc(t.thoughtId)}</h4>
               <div class="desc">${esc(t.description || 'No description')}</div>
               ${t.key ? `<div class="thought-key-row">
                 <code title="${esc(t.key)}">${esc(t.key.substring(0, 20))}...</code>
-                <button class="copy-btn" onclick="copyText('${esc(t.key)}')">Copy Key</button>
+                <button class="copy-btn" onclick="event.stopPropagation(); copyText('${esc(t.key)}')">Copy Key</button>
               </div>` : '<div class="thought-key-row"><span class="badge badge-amber">Legacy</span></div>'}
             </div>
             <div class="stats">
@@ -1397,6 +1548,165 @@ curl -X POST "https://YOUR-DOMAIN/api/brain/PROJECT-NAME/sync" \
         btn.textContent = 'Copied!';
         setTimeout(() => btn.textContent = 'Copy', 1500);
       });
+    }
+
+    let currentThoughtData = null;
+    let currentDetailTab = 'all';
+
+    async function openThought(thoughtId) {
+      document.getElementById('thoughts-list-view').style.display = 'none';
+      document.getElementById('thought-detail-view').style.display = 'block';
+      document.getElementById('detail-thought-id').textContent = thoughtId;
+      document.getElementById('detail-thought-desc').textContent = 'Loading...';
+      document.getElementById('detail-content').innerHTML = '<div class="detail-empty">Loading thought data...</div>';
+      document.getElementById('detail-stats-row').innerHTML = '';
+
+      try {
+        const res = await fetch(BASE + '/api/brain/' + encodeURIComponent(thoughtId), {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          document.getElementById('detail-content').innerHTML = `<div class="alert alert-error">${esc(err.error || 'Failed to load')}</div>`;
+          document.getElementById('detail-thought-desc').textContent = '';
+          return;
+        }
+
+        currentThoughtData = await res.json();
+        document.getElementById('detail-thought-desc').textContent = currentThoughtData.description || 'No description';
+
+        document.getElementById('detail-stats-row').innerHTML = `
+          <span class="badge badge-green">${currentThoughtData.counts.messages} messages</span>
+          <span class="badge" style="background: rgba(167,139,250,0.15); color: var(--purple);">${currentThoughtData.counts.items} actions</span>
+          <span class="badge" style="background: var(--surface-2); color: var(--text-dim);">${currentThoughtData.counts.logs} logs</span>
+        `;
+
+        currentDetailTab = 'all';
+        renderDetailTab();
+      } catch (e) {
+        document.getElementById('detail-content').innerHTML = '<div class="alert alert-error">Failed to load thought data</div>';
+        document.getElementById('detail-thought-desc').textContent = '';
+      }
+    }
+
+    function backToList() {
+      document.getElementById('thought-detail-view').style.display = 'none';
+      document.getElementById('thoughts-list-view').style.display = 'block';
+      currentThoughtData = null;
+    }
+
+    function switchDetailTab(tab) {
+      currentDetailTab = tab;
+      document.querySelectorAll('.detail-tabs button').forEach(b => b.classList.remove('active'));
+      const tabs = document.querySelectorAll('.detail-tabs button');
+      if (tab === 'all') tabs[0].classList.add('active');
+      else if (tab === 'messages') tabs[1].classList.add('active');
+      else if (tab === 'actions') tabs[2].classList.add('active');
+      else if (tab === 'logs') tabs[3].classList.add('active');
+      renderDetailTab();
+    }
+
+    function renderDetailTab() {
+      const container = document.getElementById('detail-content');
+      if (!currentThoughtData) return;
+
+      const d = currentThoughtData;
+      let entries = [];
+
+      if (currentDetailTab === 'all' || currentDetailTab === 'messages') {
+        for (const m of (d.messages || [])) {
+          const meta = m.metadata || {};
+          const isPlanning = meta.type === 'planning';
+          entries.push({
+            ts: m.createdAt || '',
+            type: isPlanning ? 'planning' : 'message',
+            role: m.role || 'user',
+            content: m.content || '',
+            session: m.sessionId || null,
+            agent: m.agentId || null,
+          });
+        }
+      }
+
+      if (currentDetailTab === 'all' || currentDetailTab === 'actions') {
+        for (const a of (d.items || [])) {
+          entries.push({
+            ts: a.createdAt || '',
+            type: 'action',
+            role: 'action',
+            content: (a.name || 'untitled') + (a.description ? ': ' + a.description : ''),
+            data: a.data || null,
+            session: a.sessionId || null,
+          });
+        }
+      }
+
+      if (currentDetailTab === 'all' || currentDetailTab === 'logs') {
+        for (const l of (d.logs || [])) {
+          entries.push({
+            ts: l.createdAt || '',
+            type: 'log',
+            role: 'log',
+            content: `${l.method || ''} ${l.path || ''} → ${l.statusCode || ''} (${l.durationMs || 0}ms)`,
+            session: l.sessionId || null,
+          });
+        }
+      }
+
+      entries.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+
+      if (entries.length === 0) {
+        container.innerHTML = '<div class="detail-empty">No entries in this category</div>';
+        return;
+      }
+
+      container.innerHTML = entries.map((e, i) => {
+        const time = e.ts ? new Date(e.ts).toLocaleString() : '';
+        const roleClass = e.type === 'action' ? 'role-agent'
+          : e.type === 'planning' ? 'role-system'
+          : e.type === 'log' ? ''
+          : 'role-' + (e.role || 'user');
+        const roleLabel = e.type === 'planning' ? 'planning'
+          : e.type === 'action' ? 'action'
+          : e.type === 'log' ? 'log'
+          : e.role || 'user';
+
+        const isLong = (e.content || '').length > 200;
+        const contentClass = isLong ? 'entry-content collapsed' : 'entry-content';
+        const expandBtn = isLong ? `<button class="expand-btn" onclick="toggleExpand(this)">Show more</button>` : '';
+
+        let extraInfo = '';
+        if (e.session) extraInfo += `<span style="color: var(--text-dim); font-size: 11px;">session: ${esc(e.session)}</span>`;
+        if (e.agent) extraInfo += ` <span style="color: var(--text-dim); font-size: 11px;">agent: ${esc(e.agent)}</span>`;
+
+        let dataBlock = '';
+        if (e.data && typeof e.data === 'object' && Object.keys(e.data).length > 0) {
+          dataBlock = `<div style="margin-top: 8px; background: var(--bg); border-radius: 6px; padding: 8px 12px; font-family: monospace; font-size: 12px; max-height: 150px; overflow: auto;">${esc(JSON.stringify(e.data, null, 2))}</div>`;
+        }
+
+        return `<div class="timeline-entry">
+          <div class="entry-header">
+            <span class="role-badge ${roleClass}">${roleLabel}</span>
+            <span>${time}</span>
+            ${extraInfo}
+          </div>
+          <div class="${contentClass}" id="entry-${i}">${esc(e.content || '')}</div>
+          ${expandBtn}
+          ${dataBlock}
+        </div>`;
+      }).join('');
+    }
+
+    function toggleExpand(btn) {
+      const content = btn.previousElementSibling;
+      if (content.classList.contains('collapsed')) {
+        content.classList.remove('collapsed');
+        btn.textContent = 'Show less';
+      } else {
+        content.classList.add('collapsed');
+        btn.textContent = 'Show more';
+      }
     }
 
     function esc(str) {
