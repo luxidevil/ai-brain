@@ -26,6 +26,10 @@ const userSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
+    mongoUri: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true }
 );

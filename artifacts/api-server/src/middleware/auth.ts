@@ -47,8 +47,10 @@ export function brainAuth(req: Request, res: Response, next: NextFunction) {
         if (!user) {
           return res.status(403).json({ error: "Invalid Brain Token" });
         }
+        const doc = user.toObject() as { _id: string; mongoUri?: string | null };
         (req as Record<string, unknown>).authLevel = "brain";
-        (req as Record<string, unknown>).authUserId = (user as unknown as { _id: string })._id;
+        (req as Record<string, unknown>).authUserId = doc._id;
+        (req as Record<string, unknown>).userMongoUri = doc.mongoUri || null;
         next();
       })
       .catch(() => {

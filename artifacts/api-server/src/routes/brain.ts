@@ -3,6 +3,7 @@ import { Message } from "../models/message";
 import { Item } from "../models/item";
 import { Log } from "../models/log";
 import { Thought } from "../models/thought";
+import { getUserConnection } from "../lib/connectionPool";
 import crypto from "crypto";
 
 const router = Router();
@@ -11,6 +12,7 @@ function getAuth(req: Request) {
   return {
     level: (req as Record<string, unknown>).authLevel as string,
     thoughtId: (req as Record<string, unknown>).authThoughtId as string | undefined,
+    mongoUri: (req as Record<string, unknown>).userMongoUri as string | null | undefined,
   };
 }
 
@@ -23,22 +25,32 @@ function canAccess(req: Request, thoughtId: string) {
   return auth.level === "brain" || auth.thoughtId === thoughtId;
 }
 
+async function getModels(req: Request) {
+  const { mongoUri } = getAuth(req);
+  if (mongoUri) {
+    return getUserConnection(mongoUri);
+  }
+  return { Message, Item, Log, Thought };
+}
+
 router.get("/", async (req, res) => {
   if (!requireBrain(req)) {
     return res.status(403).json({ error: "Brain token required to list all thoughts" });
   }
 
   try {
-    const thoughts = await Thought.find().sort({ createdAt: -1 });
+    const m = await getModels(req);
+
+    const thoughts = await m.Thought.find().sort({ createdAt: -1 });
 
     const result = [];
     for (const t of thoughts) {
       const doc = t.toObject() as { thoughtId: string; description: string; createdAt: Date; key: string };
       const filter = { projectId: doc.thoughtId };
       const [messages, items, logs] = await Promise.all([
-        Message.countDocuments(filter),
-        Item.countDocuments(filter),
-        Log.countDocuments(filter),
+        m.Message.countDocuments(filter),
+        m.Item.countDocuments(filter),
+        m.Log.countDocuments(filter),
       ]);
       result.push({
         thoughtId: doc.thoughtId,
@@ -51,10 +63,10 @@ router.get("/", async (req, res) => {
     }
 
     const [orphanMsgProjects, orphanItemProjects] = await Promise.all([
-      Message.distinct("projectId", {
+      m.Message.distinct("projectId", {
         projectId: { $ne: null, $nin: thoughts.map((t) => (t as unknown as { thoughtId: string }).thoughtId) },
       }),
-      Item.distinct("projectId", {
+      m.Item.distinct("projectId", {
         projectId: { $ne: null, $nin: thoughts.map((t) => (t as unknown as { thoughtId: string }).thoughtId) },
       }),
     ]);
@@ -63,9 +75,9 @@ router.get("/", async (req, res) => {
     for (const id of orphanIds) {
       const filter = { projectId: id };
       const [messages, items, logs] = await Promise.all([
-        Message.countDocuments(filter),
-        Item.countDocuments(filter),
-        Log.countDocuments(filter),
+        m.Message.countDocuments(filter),
+        m.Item.countDocuments(filter),
+        m.Log.countDocuments(filter),
       ]);
       result.push({
         thoughtId: id,
@@ -98,24 +110,30 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "thoughtId is required (string)" });
   }
 
-  const exists = await Thought.findOne({ thoughtId });
-  if (exists) {
-    return res.status(409).json({ error: `Thought '${thoughtId}' already exists` });
+  try {
+    const m = await getModels(req);
+
+    const exists = await m.Thought.findOne({ thoughtId });
+    if (exists) {
+      return res.status(409).json({ error: `Thought '${thoughtId}' already exists` });
+    }
+
+    const key = `tk_${crypto.randomBytes(32).toString("hex")}`;
+
+    const thought = await m.Thought.create({
+      thoughtId,
+      description: description || "",
+      key,
+    });
+
+    res.status(201).json({
+      thoughtId: (thought as unknown as { thoughtId: string }).thoughtId,
+      key,
+      message: "Thought created. Save this key — it grants direct access to this thought.",
+    });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to create thought" });
   }
-
-  const key = `tk_${crypto.randomBytes(32).toString("hex")}`;
-
-  const thought = await Thought.create({
-    thoughtId,
-    description: description || "",
-    key,
-  });
-
-  res.status(201).json({
-    thoughtId: (thought as unknown as { thoughtId: string }).thoughtId,
-    key,
-    message: "Thought created. Save this key — it grants direct access to this thought.",
-  });
 });
 
 router.get("/:thoughtId", async (req, res) => {
@@ -126,13 +144,14 @@ router.get("/:thoughtId", async (req, res) => {
       return res.status(403).json({ error: "Access denied to this thought" });
     }
 
+    const m = await getModels(req);
     const filter = { projectId: thoughtId };
 
     const [messages, items, logs, thought] = await Promise.all([
-      Message.find(filter).sort({ createdAt: 1 }),
-      Item.find(filter).sort({ createdAt: 1 }),
-      Log.find(filter).sort({ createdAt: 1 }),
-      Thought.findOne({ thoughtId }),
+      m.Message.find(filter).sort({ createdAt: 1 }),
+      m.Item.find(filter).sort({ createdAt: 1 }),
+      m.Log.find(filter).sort({ createdAt: 1 }),
+      m.Thought.findOne({ thoughtId }),
     ]);
 
     if (messages.length === 0 && items.length === 0 && logs.length === 0) {
@@ -165,13 +184,14 @@ router.get("/:thoughtId/context", async (req, res) => {
       return res.status(403).json({ error: "Access denied to this thought" });
     }
 
+    const m = await getModels(req);
     const filter: Record<string, unknown> = { projectId: thoughtId };
     if (req.query.sessionId) filter.sessionId = req.query.sessionId;
 
     const [messages, items, thought] = await Promise.all([
-      Message.find(filter).sort({ createdAt: 1 }),
-      Item.find(filter).sort({ createdAt: 1 }),
-      Thought.findOne({ thoughtId }),
+      m.Message.find(filter).sort({ createdAt: 1 }),
+      m.Item.find(filter).sort({ createdAt: 1 }),
+      m.Thought.findOne({ thoughtId }),
     ]);
 
     if (messages.length === 0 && items.length === 0) {
@@ -275,14 +295,16 @@ router.post("/:thoughtId/sync", async (req, res) => {
     });
   }
 
+  const m = await getModels(req);
+
   if (messages.length > 0) {
     try {
-      const docs = messages.map((m: Record<string, unknown>) => ({
-        ...m,
+      const docs = messages.map((msg: Record<string, unknown>) => ({
+        ...msg,
         projectId: thoughtId,
-        sessionId: m.sessionId ?? sessionId ?? null,
+        sessionId: msg.sessionId ?? sessionId ?? null,
       }));
-      const created = await Message.insertMany(docs, { ordered: false });
+      const created = await m.Message.insertMany(docs, { ordered: false });
       results.messages = { saved: created.length };
     } catch (err: unknown) {
       errors.push(`messages: ${err instanceof Error ? err.message : "insert failed"}`);
@@ -311,7 +333,7 @@ router.post("/:thoughtId/sync", async (req, res) => {
           },
         };
       });
-      const created = await Message.insertMany(docs, { ordered: false });
+      const created = await m.Message.insertMany(docs, { ordered: false });
       results.planning = { saved: created.length };
     } catch (err: unknown) {
       errors.push(`planning: ${err instanceof Error ? err.message : "insert failed"}`);
@@ -330,7 +352,7 @@ router.post("/:thoughtId/sync", async (req, res) => {
         projectId: thoughtId,
         sessionId: a.sessionId ?? sessionId ?? null,
       }));
-      const created = await Item.insertMany(docs, { ordered: false });
+      const created = await m.Item.insertMany(docs, { ordered: false });
       results.actions = { saved: created.length };
     } catch (err: unknown) {
       errors.push(`actions: ${err instanceof Error ? err.message : "insert failed"}`);
@@ -345,7 +367,7 @@ router.post("/:thoughtId/sync", async (req, res) => {
         projectId: thoughtId,
         sessionId: l.sessionId ?? sessionId ?? null,
       }));
-      const created = await Log.insertMany(docs, { ordered: false });
+      const created = await m.Log.insertMany(docs, { ordered: false });
       results.logs = { saved: created.length };
     } catch (err: unknown) {
       errors.push(`logs: ${err instanceof Error ? err.message : "insert failed"}`);
@@ -369,13 +391,14 @@ router.delete("/:thoughtId", async (req, res) => {
 
   try {
     const { thoughtId } = req.params;
+    const m = await getModels(req);
     const filter = { projectId: thoughtId };
 
     const [msgResult, itemResult, logResult] = await Promise.all([
-      Message.deleteMany(filter),
-      Item.deleteMany(filter),
-      Log.deleteMany(filter),
-      Thought.deleteOne({ thoughtId }),
+      m.Message.deleteMany(filter),
+      m.Item.deleteMany(filter),
+      m.Log.deleteMany(filter),
+      m.Thought.deleteOne({ thoughtId }),
     ]);
 
     const totalDeleted =
@@ -408,8 +431,9 @@ router.post("/:thoughtId/regenerate-key", async (req, res) => {
 
   try {
     const { thoughtId } = req.params;
+    const m = await getModels(req);
     const newKey = `tk_${crypto.randomBytes(32).toString("hex")}`;
-    const thought = await Thought.findOneAndUpdate(
+    const thought = await m.Thought.findOneAndUpdate(
       { thoughtId },
       { key: newKey },
       { new: true }

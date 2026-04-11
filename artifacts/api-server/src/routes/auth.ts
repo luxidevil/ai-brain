@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { User } from "../models/user";
+import { testMongoConnection } from "../lib/connectionPool";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 
@@ -7,7 +8,7 @@ const router = Router();
 
 router.post("/register", async (req, res) => {
   try {
-    const { email, password, name } = req.body ?? {};
+    const { email, password, name, mongoUri } = req.body ?? {};
 
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
@@ -30,6 +31,24 @@ router.post("/register", async (req, res) => {
         .json({ error: "An account with this email already exists" });
     }
 
+    let validatedUri: string | null = null;
+    if (mongoUri && typeof mongoUri === "string" && mongoUri.trim()) {
+      const trimmed = mongoUri.trim();
+      if (!trimmed.startsWith("mongodb://") && !trimmed.startsWith("mongodb+srv://")) {
+        return res.status(400).json({ error: "MongoDB URI must start with mongodb:// or mongodb+srv://" });
+      }
+
+      const result = await testMongoConnection(trimmed);
+      if (!result.ok) {
+        return res.status(400).json({
+          error: "Could not connect to your MongoDB",
+          detail: result.error,
+          hint: "Make sure you've added our server IP (142.93.220.197) to your MongoDB Atlas Network Access list.",
+        });
+      }
+      validatedUri = trimmed;
+    }
+
     const passwordHash = await bcrypt.hash(password, 12);
     const brainToken = `bt_${crypto.randomBytes(32).toString("hex")}`;
 
@@ -38,12 +57,14 @@ router.post("/register", async (req, res) => {
       name: name || "",
       passwordHash,
       brainToken,
+      mongoUri: validatedUri,
     });
 
     const doc = user.toObject() as {
       email: string;
       name: string;
       brainToken: string;
+      mongoUri: string | null;
       createdAt: Date;
     };
 
@@ -52,6 +73,7 @@ router.post("/register", async (req, res) => {
       email: doc.email,
       name: doc.name,
       brainToken: doc.brainToken,
+      storage: doc.mongoUri ? "your-mongodb" : "shared",
       createdAt: doc.createdAt,
     });
   } catch (err: unknown) {
@@ -79,6 +101,7 @@ router.post("/login", async (req, res) => {
       name: string;
       passwordHash: string;
       brainToken: string;
+      mongoUri: string | null;
       createdAt: Date;
     };
 
@@ -92,12 +115,57 @@ router.post("/login", async (req, res) => {
       email: doc.email,
       name: doc.name,
       brainToken: doc.brainToken,
+      storage: doc.mongoUri ? "your-mongodb" : "shared",
       createdAt: doc.createdAt,
     });
   } catch (err: unknown) {
     res
       .status(500)
       .json({ error: err instanceof Error ? err.message : "Login failed" });
+  }
+});
+
+router.put("/mongo-uri", async (req, res) => {
+  try {
+    const authHeader = req.headers["authorization"];
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+    if (!token || !token.startsWith("bt_")) {
+      return res.status(401).json({ error: "Brain token required" });
+    }
+
+    const user = await User.findOne({ brainToken: token });
+    if (!user) {
+      return res.status(403).json({ error: "Invalid brain token" });
+    }
+
+    const { mongoUri } = req.body ?? {};
+
+    if (mongoUri === null || mongoUri === "") {
+      (user as Record<string, unknown>).mongoUri = null;
+      await user.save();
+      return res.json({ message: "Switched to shared storage", storage: "shared" });
+    }
+
+    if (typeof mongoUri !== "string" || (!mongoUri.startsWith("mongodb://") && !mongoUri.startsWith("mongodb+srv://"))) {
+      return res.status(400).json({ error: "MongoDB URI must start with mongodb:// or mongodb+srv://" });
+    }
+
+    const result = await testMongoConnection(mongoUri.trim());
+    if (!result.ok) {
+      return res.status(400).json({
+        error: "Could not connect to your MongoDB",
+        detail: result.error,
+        hint: "Make sure you've added our server IP (142.93.220.197) to your MongoDB Atlas Network Access list.",
+      });
+    }
+
+    (user as Record<string, unknown>).mongoUri = mongoUri.trim();
+    await user.save();
+
+    res.json({ message: "MongoDB URI updated. Your data now lives in your own database.", storage: "your-mongodb" });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to update MongoDB URI" });
   }
 });
 
