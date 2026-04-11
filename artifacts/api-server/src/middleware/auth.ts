@@ -2,6 +2,7 @@ import { type Request, type Response, type NextFunction } from "express";
 import { Thought } from "../models/thought";
 
 const PUBLIC_PATHS = [
+  "/",
   "/api/healthz",
   "/api/docs",
   "/api/docs.json",
