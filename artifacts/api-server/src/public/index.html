@@ -677,59 +677,152 @@
 
     .detail-tabs button:hover { color: var(--text); }
 
-    .timeline-entry {
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 16px 20px;
-      margin-bottom: 10px;
+    .chat-thread {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 16px 0;
     }
 
-    .timeline-entry .entry-header {
+    .chat-row {
+      display: flex;
+      flex-direction: column;
+      max-width: 82%;
+    }
+
+    .chat-row.right {
+      align-self: flex-end;
+      align-items: flex-end;
+    }
+
+    .chat-row.left {
+      align-self: flex-start;
+      align-items: flex-start;
+    }
+
+    .chat-row.center {
+      align-self: center;
+      align-items: center;
+      max-width: 90%;
+    }
+
+    .chat-meta {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+      padding: 0 4px;
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 8px;
-      font-size: 12px;
-      color: var(--text-dim);
+      gap: 8px;
     }
 
-    .timeline-entry .entry-header .role-badge {
-      padding: 2px 8px;
+    .chat-meta .role-badge {
+      padding: 1px 6px;
       border-radius: 4px;
-      font-size: 11px;
-      font-weight: 600;
+      font-size: 10px;
+      font-weight: 700;
       text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
 
     .role-user { background: var(--accent-glow); color: var(--accent); }
     .role-assistant { background: var(--green-dim); color: var(--green); }
     .role-system { background: var(--amber-dim); color: var(--amber); }
     .role-agent { background: rgba(167,139,250,0.15); color: var(--purple); }
+    .role-action { background: rgba(96,165,250,0.12); color: var(--blue); }
+    .role-planning { background: var(--amber-dim); color: var(--amber); }
+    .role-log { background: var(--surface-2); color: var(--text-dim); }
 
-    .timeline-entry .entry-content {
+    .chat-bubble {
+      padding: 12px 16px;
+      border-radius: 16px;
       font-size: 14px;
-      line-height: 1.7;
+      line-height: 1.65;
       white-space: pre-wrap;
       word-break: break-word;
-      max-height: 300px;
-      overflow-y: auto;
-    }
-
-    .timeline-entry .entry-content.collapsed {
-      max-height: 80px;
-      overflow: hidden;
       position: relative;
     }
 
-    .timeline-entry .entry-content.collapsed::after {
+    .chat-row.right .chat-bubble {
+      background: var(--accent);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+
+    .chat-row.left .chat-bubble {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-bottom-left-radius: 4px;
+    }
+
+    .chat-row.center .chat-bubble {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      border-radius: 10px;
+      font-size: 13px;
+      width: 100%;
+    }
+
+    .chat-bubble.bubble-action {
+      background: rgba(96,165,250,0.08);
+      border: 1px dashed rgba(96,165,250,0.3);
+      border-radius: 10px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .chat-bubble.bubble-planning {
+      background: rgba(251,191,36,0.06);
+      border: 1px solid rgba(251,191,36,0.2);
+      border-radius: 10px;
+      font-size: 13px;
+      color: var(--text-dim);
+      font-style: italic;
+    }
+
+    .chat-bubble.bubble-log {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      color: var(--text-dim);
+      padding: 8px 12px;
+    }
+
+    .chat-bubble .bubble-content {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .chat-bubble .bubble-content.collapsed {
+      max-height: 120px;
+      overflow: hidden;
+    }
+
+    .chat-bubble .bubble-content.collapsed::after {
       content: '';
       position: absolute;
       bottom: 0;
       left: 0;
       right: 0;
-      height: 40px;
+      height: 50px;
+      border-radius: 0 0 16px 16px;
+    }
+
+    .chat-row.left .bubble-content.collapsed::after {
       background: linear-gradient(transparent, var(--surface-2));
+    }
+
+    .chat-row.right .bubble-content.collapsed::after {
+      background: linear-gradient(transparent, var(--accent));
+    }
+
+    .chat-row.center .bubble-content.collapsed::after {
+      background: linear-gradient(transparent, var(--surface));
     }
 
     .expand-btn {
@@ -740,6 +833,38 @@
       cursor: pointer;
       padding: 4px 0;
       margin-top: 4px;
+    }
+
+    .chat-row.right .expand-btn { color: rgba(255,255,255,0.7); }
+
+    .chat-bubble .action-data {
+      margin-top: 8px;
+      background: var(--bg);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      max-height: 150px;
+      overflow: auto;
+      color: var(--text-dim);
+    }
+
+    .session-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 0;
+      color: var(--text-dim);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .session-divider::before,
+    .session-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
     }
 
     .detail-empty {
@@ -1745,41 +1870,80 @@ curl -X POST "https://YOUR-DOMAIN/api/brain/PROJECT-NAME/sync" \
         return;
       }
 
-      container.innerHTML = entries.map((e, i) => {
-        const time = e.ts ? new Date(e.ts).toLocaleString() : '';
-        const roleClass = e.type === 'action' ? 'role-agent'
-          : e.type === 'planning' ? 'role-system'
-          : e.type === 'log' ? ''
-          : 'role-' + (e.role || 'user');
-        const roleLabel = e.type === 'planning' ? 'planning'
-          : e.type === 'action' ? 'action'
-          : e.type === 'log' ? 'log'
-          : e.role || 'user';
+      let html = '<div class="chat-thread">';
+      let lastSession = null;
 
-        const isLong = (e.content || '').length > 200;
-        const contentClass = isLong ? 'entry-content collapsed' : 'entry-content';
-        const expandBtn = isLong ? `<button class="expand-btn" onclick="toggleExpand(this)">Show more</button>` : '';
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
 
-        let extraInfo = '';
-        if (e.session) extraInfo += `<span style="color: var(--text-dim); font-size: 11px;">session: ${esc(e.session)}</span>`;
-        if (e.agent) extraInfo += ` <span style="color: var(--text-dim); font-size: 11px;">agent: ${esc(e.agent)}</span>`;
+        if (e.session && e.session !== lastSession) {
+          html += `<div class="session-divider">${esc(e.session)}</div>`;
+          lastSession = e.session;
+        }
+
+        const time = e.ts ? new Date(e.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        const date = e.ts ? new Date(e.ts).toLocaleDateString() : '';
+
+        let align, bubbleClass, roleClass, roleLabel;
+
+        if (e.type === 'message') {
+          if (e.role === 'user') {
+            align = 'right';
+            roleClass = 'role-user';
+            roleLabel = 'You';
+          } else if (e.role === 'assistant') {
+            align = 'left';
+            roleClass = 'role-assistant';
+            roleLabel = 'Assistant';
+          } else {
+            align = 'left';
+            roleClass = 'role-system';
+            roleLabel = e.role || 'system';
+          }
+          bubbleClass = '';
+        } else if (e.type === 'planning') {
+          align = 'center';
+          bubbleClass = 'bubble-planning';
+          roleClass = 'role-planning';
+          roleLabel = 'Thinking';
+        } else if (e.type === 'action') {
+          align = 'center';
+          bubbleClass = 'bubble-action';
+          roleClass = 'role-action';
+          roleLabel = 'Action';
+        } else {
+          align = 'center';
+          bubbleClass = 'bubble-log';
+          roleClass = 'role-log';
+          roleLabel = 'Log';
+        }
+
+        const isLong = (e.content || '').length > 300;
+        const contentClass = isLong ? 'bubble-content collapsed' : 'bubble-content';
+
+        let metaParts = `<span class="role-badge ${roleClass}">${roleLabel}</span>`;
+        metaParts += `<span>${date} ${time}</span>`;
+        if (e.agent) metaParts += `<span>agent: ${esc(e.agent)}</span>`;
 
         let dataBlock = '';
         if (e.data && typeof e.data === 'object' && Object.keys(e.data).length > 0) {
-          dataBlock = `<div style="margin-top: 8px; background: var(--bg); border-radius: 6px; padding: 8px 12px; font-family: monospace; font-size: 12px; max-height: 150px; overflow: auto;">${esc(JSON.stringify(e.data, null, 2))}</div>`;
+          dataBlock = `<div class="action-data">${esc(JSON.stringify(e.data, null, 2))}</div>`;
         }
 
-        return `<div class="timeline-entry">
-          <div class="entry-header">
-            <span class="role-badge ${roleClass}">${roleLabel}</span>
-            <span>${time}</span>
-            ${extraInfo}
+        const expandBtn = isLong ? `<button class="expand-btn" onclick="toggleExpand(this)">Show more</button>` : '';
+
+        html += `<div class="chat-row ${align}">
+          <div class="chat-meta">${metaParts}</div>
+          <div class="chat-bubble ${bubbleClass}">
+            <div class="${contentClass}">${esc(e.content || '')}</div>
+            ${expandBtn}
+            ${dataBlock}
           </div>
-          <div class="${contentClass}" id="entry-${i}">${esc(e.content || '')}</div>
-          ${expandBtn}
-          ${dataBlock}
         </div>`;
-      }).join('');
+      }
+
+      html += '</div>';
+      container.innerHTML = html;
     }
 
     function toggleExpand(btn) {
