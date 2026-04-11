@@ -1,11 +1,14 @@
 import { type Request, type Response, type NextFunction } from "express";
 import { Thought } from "../models/thought";
+import { User } from "../models/user";
 
 const PUBLIC_PATHS = [
   "/",
   "/api/healthz",
   "/api/docs",
   "/api/docs.json",
+  "/api/auth/register",
+  "/api/auth/login",
 ];
 
 function extractToken(req: Request): string | undefined {
@@ -18,14 +21,8 @@ function extractToken(req: Request): string | undefined {
 }
 
 export function brainAuth(req: Request, res: Response, next: NextFunction) {
-  const brainToken = process.env.BRAIN_TOKEN;
-
-  if (!brainToken) {
-    return next();
-  }
-
   const isPublic = PUBLIC_PATHS.some(
-    (p) => req.path === p || req.path.startsWith("/api/docs")
+    (p) => req.path === p || req.path.startsWith("/api/docs") || req.path.startsWith("/api/auth/")
   );
   if (isPublic) return next();
 
@@ -38,9 +35,26 @@ export function brainAuth(req: Request, res: Response, next: NextFunction) {
     });
   }
 
-  if (provided === brainToken) {
+  const envBrainToken = process.env.BRAIN_TOKEN;
+  if (envBrainToken && provided === envBrainToken) {
     (req as Record<string, unknown>).authLevel = "brain";
     return next();
+  }
+
+  if (provided.startsWith("bt_")) {
+    User.findOne({ brainToken: provided })
+      .then((user) => {
+        if (!user) {
+          return res.status(403).json({ error: "Invalid Brain Token" });
+        }
+        (req as Record<string, unknown>).authLevel = "brain";
+        (req as Record<string, unknown>).authUserId = (user as unknown as { _id: string })._id;
+        next();
+      })
+      .catch(() => {
+        res.status(500).json({ error: "Auth lookup failed" });
+      });
+    return;
   }
 
   if (provided.startsWith("tk_")) {
