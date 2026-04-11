@@ -1,36 +1,41 @@
-import { Router, type Request } from "express";
+import { Router, type Request, type Response } from "express";
 import { Secret } from "../models/secret";
 import { getUserConnection } from "../lib/connectionPool";
+import type mongoose from "mongoose";
 
 const router = Router();
 
+type AnyModel = mongoose.Model<mongoose.Document & Record<string, unknown>>;
+
 function getAuth(req: Request) {
+  const r = req as unknown as Record<string, unknown>;
   return {
-    level: (req as Record<string, unknown>).authLevel as string,
-    thoughtId: (req as Record<string, unknown>).authThoughtId as string | undefined,
-    mongoUri: (req as Record<string, unknown>).userMongoUri as string | null | undefined,
+    level: r.authLevel as string,
+    thoughtId: r.authThoughtId as string | undefined,
+    mongoUri: r.userMongoUri as string | null | undefined,
   };
 }
 
-async function getSecretModel(req: Request) {
+async function getSecretModel(req: Request): Promise<AnyModel> {
   const { mongoUri } = getAuth(req);
   if (mongoUri) {
     const models = await getUserConnection(mongoUri);
-    return models.Secret;
+    return models.Secret as unknown as AnyModel;
   }
-  return Secret;
+  return Secret as unknown as AnyModel;
 }
 
-router.get("/brain", async (req, res) => {
+router.get("/brain", async (req: Request, res: Response): Promise<void> => {
   if (getAuth(req).level !== "brain") {
-    return res.status(403).json({ error: "Brain token required to view brain secrets" });
+    res.status(403).json({ error: "Brain token required to view brain secrets" });
+    return;
   }
 
   try {
     const S = await getSecretModel(req);
-    const secrets = await S.find({ scope: "brain" }).sort({ key: 1 });
+    const secrets = await (S.find({ scope: "brain" }) as ReturnType<typeof S.find>).sort({ key: 1 });
     const result = secrets.map((s) => {
-      const doc = s.toObject() as { key: string; value: string; createdAt: Date; updatedAt: Date };
+      const doc = (s as mongoose.Document).toObject() as { key: string; value: string; createdAt: Date; updatedAt: Date };
       return { key: doc.key, value: doc.value, createdAt: doc.createdAt, updatedAt: doc.updatedAt };
     });
     res.json({ scope: "brain", secrets: result, count: result.length });
@@ -39,42 +44,45 @@ router.get("/brain", async (req, res) => {
   }
 });
 
-router.put("/brain/:key", async (req, res) => {
+router.put("/brain/:key", async (req: Request, res: Response): Promise<void> => {
   if (getAuth(req).level !== "brain") {
-    return res.status(403).json({ error: "Brain token required to manage brain secrets" });
+    res.status(403).json({ error: "Brain token required to manage brain secrets" });
+    return;
   }
 
   const { key } = req.params;
   const { value } = req.body ?? {};
 
   if (value === undefined || value === null) {
-    return res.status(400).json({ error: "value is required" });
+    res.status(400).json({ error: "value is required" });
+    return;
   }
 
   try {
     const S = await getSecretModel(req);
-    const secret = await S.findOneAndUpdate(
-      { scope: "brain", thoughtId: null, key },
-      { scope: "brain", thoughtId: null, key, value: String(value) },
+    await S.findOneAndUpdate(
+      { scope: "brain", thoughtId: null, key } as Record<string, unknown>,
+      { scope: "brain", thoughtId: null, key, value: String(value) } as Record<string, unknown>,
       { upsert: true, new: true }
     );
-    const doc = secret.toObject() as { key: string; updatedAt: Date };
-    res.json({ message: `Secret '${key}' saved`, key: doc.key, scope: "brain", updatedAt: doc.updatedAt });
+    res.json({ message: `Secret '${key}' saved`, key, scope: "brain" });
   } catch (err: unknown) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed" });
   }
 });
 
-router.delete("/brain/:key", async (req, res) => {
+router.delete("/brain/:key", async (req: Request, res: Response): Promise<void> => {
   if (getAuth(req).level !== "brain") {
-    return res.status(403).json({ error: "Brain token required to manage brain secrets" });
+    res.status(403).json({ error: "Brain token required to manage brain secrets" });
+    return;
   }
 
   try {
     const S = await getSecretModel(req);
-    const result = await S.deleteOne({ scope: "brain", thoughtId: null, key: req.params.key });
-    if (result.deletedCount === 0) {
-      return res.status(404).json({ error: `Secret '${req.params.key}' not found` });
+    const result = await S.deleteOne({ scope: "brain", thoughtId: null, key: req.params.key } as Record<string, unknown>);
+    if ((result as { deletedCount?: number }).deletedCount === 0) {
+      res.status(404).json({ error: `Secret '${req.params.key}' not found` });
+      return;
     }
     res.json({ message: `Secret '${req.params.key}' deleted` });
   } catch (err: unknown) {
@@ -82,95 +90,86 @@ router.delete("/brain/:key", async (req, res) => {
   }
 });
 
-router.get("/thought/:thoughtId", async (req, res) => {
+router.get("/thought/:thoughtId", async (req: Request, res: Response): Promise<void> => {
   const auth = getAuth(req);
   const { thoughtId } = req.params;
 
   if (auth.level !== "brain" && auth.thoughtId !== thoughtId) {
-    return res.status(403).json({ error: "Access denied to this thought's secrets" });
+    res.status(403).json({ error: "Access denied to this thought's secrets" });
+    return;
   }
 
   try {
     const S = await getSecretModel(req);
 
     const [thoughtSecrets, brainSecrets] = await Promise.all([
-      S.find({ scope: "thought", thoughtId }).sort({ key: 1 }),
-      auth.level === "brain" ? S.find({ scope: "brain" }).sort({ key: 1 }) : Promise.resolve([]),
+      (S.find({ scope: "thought", thoughtId } as Record<string, unknown>) as ReturnType<typeof S.find>).sort({ key: 1 }),
+      auth.level === "brain"
+        ? (S.find({ scope: "brain" } as Record<string, unknown>) as ReturnType<typeof S.find>).sort({ key: 1 })
+        : Promise.resolve([]),
     ]);
 
     const merged: Record<string, { value: string; scope: string; source: string }> = {};
 
     for (const s of brainSecrets) {
-      const doc = s.toObject() as { key: string; value: string };
+      const doc = (s as mongoose.Document).toObject() as { key: string; value: string };
       merged[doc.key] = { value: doc.value, scope: "brain", source: "brain (global)" };
     }
 
     for (const s of thoughtSecrets) {
-      const doc = s.toObject() as { key: string; value: string };
-      merged[doc.key] = { value: doc.value, scope: "thought", source: `thought (${thoughtId})` };
+      const doc = (s as mongoose.Document).toObject() as { key: string; value: string };
+      merged[doc.key] = { value: doc.value, scope: "thought", source: `thought:${thoughtId}` };
     }
 
-    const result = Object.entries(merged).map(([key, v]) => ({
-      key,
-      value: v.value,
-      scope: v.scope,
-      source: v.source,
-    }));
-
-    result.sort((a, b) => a.key.localeCompare(b.key));
-
-    res.json({
-      thoughtId,
-      secrets: result,
-      count: result.length,
-      brainSecrets: brainSecrets.length,
-      thoughtSecrets: thoughtSecrets.length,
-    });
+    res.json({ thoughtId, secrets: merged, count: Object.keys(merged).length });
   } catch (err: unknown) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed" });
   }
 });
 
-router.put("/thought/:thoughtId/:key", async (req, res) => {
+router.put("/thought/:thoughtId/:key", async (req: Request, res: Response): Promise<void> => {
   const auth = getAuth(req);
   const { thoughtId, key } = req.params;
-  const { value } = req.body ?? {};
 
   if (auth.level !== "brain" && auth.thoughtId !== thoughtId) {
-    return res.status(403).json({ error: "Access denied to this thought's secrets" });
+    res.status(403).json({ error: "Access denied to this thought's secrets" });
+    return;
   }
 
+  const { value } = req.body ?? {};
   if (value === undefined || value === null) {
-    return res.status(400).json({ error: "value is required" });
+    res.status(400).json({ error: "value is required" });
+    return;
   }
 
   try {
     const S = await getSecretModel(req);
-    const secret = await S.findOneAndUpdate(
-      { scope: "thought", thoughtId, key },
-      { scope: "thought", thoughtId, key, value: String(value) },
+    await S.findOneAndUpdate(
+      { scope: "thought", thoughtId, key } as Record<string, unknown>,
+      { scope: "thought", thoughtId, key, value: String(value) } as Record<string, unknown>,
       { upsert: true, new: true }
     );
-    const doc = secret.toObject() as { key: string; updatedAt: Date };
-    res.json({ message: `Secret '${key}' saved for thought '${thoughtId}'`, key: doc.key, scope: "thought", thoughtId, updatedAt: doc.updatedAt });
+    res.json({ message: `Secret '${key}' saved for thought '${thoughtId}'`, key, thoughtId });
   } catch (err: unknown) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed" });
   }
 });
 
-router.delete("/thought/:thoughtId/:key", async (req, res) => {
+router.delete("/thought/:thoughtId/:key", async (req: Request, res: Response): Promise<void> => {
   const auth = getAuth(req);
   const { thoughtId, key } = req.params;
 
   if (auth.level !== "brain" && auth.thoughtId !== thoughtId) {
-    return res.status(403).json({ error: "Access denied to this thought's secrets" });
+    res.status(403).json({ error: "Access denied to this thought's secrets" });
+    return;
   }
 
   try {
     const S = await getSecretModel(req);
-    const result = await S.deleteOne({ scope: "thought", thoughtId, key });
-    if (result.deletedCount === 0) {
-      return res.status(404).json({ error: `Secret '${key}' not found in thought '${thoughtId}'` });
+    const result = await S.deleteOne({ scope: "thought", thoughtId, key } as Record<string, unknown>);
+    if ((result as { deletedCount?: number }).deletedCount === 0) {
+      res.status(404).json({ error: `Secret '${key}' not found` });
+      return;
     }
     res.json({ message: `Secret '${key}' deleted from thought '${thoughtId}'` });
   } catch (err: unknown) {

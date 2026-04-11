@@ -1,29 +1,32 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { Message } from "../models/message";
 import { Item } from "../models/item";
 import { Log } from "../models/log";
 
 const router = Router();
 
-/**
- * POST /sync
- * One-shot endpoint — push messages, planning, actions, and logs for a project session.
- *
- * Tree structure:
- *   Brain (this API)
- *     └── projectId  ("my-game", "ecommerce-app", etc.)
- *           └── sessionId  ("session-001", "session-002", etc.)
- *                 └── messages, planning, actions, logs
- */
-router.post("/", async (req, res) => {
+router.post("/", async (req: Request, res: Response): Promise<void> => {
+  const auth = req as unknown as Record<string, unknown>;
+  const authThoughtId = auth.authThoughtId as string | undefined;
+
   const {
     messages = [],
     planning = [],
     actions = [],
     logs = [],
     sessionId,
-    projectId,
   } = req.body ?? {};
+
+  // If authenticated with a Thought Key, always use that thought's ID as projectId.
+  // This prevents typos from creating phantom thoughts.
+  const projectId: string | undefined = authThoughtId ?? req.body?.projectId;
+
+  if (!projectId) {
+    res.status(400).json({
+      error: "projectId is required when using a Brain Token. Use a Thought Key to auto-bind to a thought.",
+    });
+    return;
+  }
 
   const errors: string[] = [];
   const results: Record<string, unknown> = {};
@@ -34,9 +37,8 @@ router.post("/", async (req, res) => {
     !Array.isArray(actions) ||
     !Array.isArray(logs)
   ) {
-    return res.status(400).json({
-      error: "messages, planning, actions, and logs must all be arrays",
-    });
+    res.status(400).json({ error: "messages, planning, actions, and logs must all be arrays" });
+    return;
   }
 
   if (messages.length > 0) {
@@ -59,7 +61,7 @@ router.post("/", async (req, res) => {
       const docs = planning.map((p: Record<string, unknown>) => {
         const content = typeof p === "string"
           ? p
-          : p.content ?? p.raw ?? p.text ?? p.thinking ?? JSON.stringify(p);
+          : String(p.content ?? p.raw ?? p.text ?? p.thinking ?? JSON.stringify(p));
         return {
           role: "system",
           content,
@@ -117,101 +119,93 @@ router.post("/", async (req, res) => {
     }
   }
 
-  const status = errors.length === 0 ? 201 : 207;
-  res.status(status).json({
-    ok: errors.length === 0,
+  const totalSaved = Object.values(results).reduce(
+    (sum, r) => (sum as number) + (((r as { saved?: number }).saved) ?? 0),
+    0
+  ) as number;
+
+  res.status(errors.length > 0 ? 207 : 200).json({
+    message: "Sync complete",
+    saved: totalSaved,
     results,
-    ...(errors.length > 0 ? { errors } : {}),
+    errors: errors.length > 0 ? errors : undefined,
   });
 });
 
-/**
- * GET /sync/read
- * Read all data for a given sessionId (and optionally projectId).
- */
-router.get("/read", async (req, res) => {
-  const { sessionId, projectId } = req.query as Record<string, string>;
-
-  if (!sessionId && !projectId) {
-    return res.status(400).json({ error: "sessionId or projectId is required" });
-  }
-
-  try {
-    const filter: Record<string, unknown> = {};
-    if (projectId) filter.projectId = projectId;
-    if (sessionId) filter.sessionId = sessionId;
-
-    const [messages, items, logs] = await Promise.all([
-      Message.find(filter).sort({ createdAt: 1 }),
-      Item.find({ ...filter, tags: "action" }).sort({ createdAt: 1 }),
-      Log.find(filter).sort({ createdAt: 1 }),
-    ]);
-
-    res.json({
-      projectId: projectId ?? null,
-      sessionId: sessionId ?? null,
-      messages,
-      actions: items,
-      logs,
-      totals: {
-        messages: messages.length,
-        actions: items.length,
-        logs: logs.length,
-      },
-    });
-  } catch (err: unknown) {
-    res.status(500).json({ error: err instanceof Error ? err.message : "Failed" });
-  }
-});
-
-/**
- * GET /sync/context
- * Returns a full chronological timeline of all events for a projectId.
- */
-router.get("/context", async (req, res) => {
-  const { projectId } = req.query as Record<string, string>;
+router.get("/context", async (req: Request, res: Response): Promise<void> => {
+  const { limit: rawLimit } = req.query as Record<string, string>;
+  const authThoughtId = (req as unknown as Record<string, unknown>).authThoughtId as string | undefined;
+  const projectId = authThoughtId ?? (req.query.projectId as string | undefined);
 
   if (!projectId) {
-    return res.status(400).json({ error: "projectId is required" });
+    res.status(400).json({ error: "projectId is required (or use a Thought Key to auto-bind)" });
+    return;
   }
+
+  const limit = Math.min(Number(rawLimit) || 200, 500);
 
   try {
     const filter = { projectId };
-
     const [messages, items, logs] = await Promise.all([
-      Message.find(filter).sort({ createdAt: 1 }),
-      Item.find({ ...filter, tags: "action" }).sort({ createdAt: 1 }),
-      Log.find(filter).sort({ createdAt: 1 }),
+      Message.find(filter).sort({ createdAt: 1 }).limit(limit),
+      Item.find(filter).sort({ createdAt: -1 }).limit(limit),
+      Log.find(filter).sort({ createdAt: -1 }).limit(50),
     ]);
 
-    const timeline: Array<Record<string, unknown> & { _ts?: Date }> = [];
+    const timeline: (Record<string, unknown> & { _ts?: Date })[] = [];
 
-    for (const msg of messages) {
-      const doc = msg.toObject() as Record<string, unknown> & { createdAt?: Date; metadata?: Record<string, unknown> };
+    for (const m of messages) {
+      const doc = m.toObject() as {
+        role: string;
+        content: string;
+        sessionId?: string;
+        agentId?: string;
+        metadata?: Record<string, unknown>;
+        createdAt: Date;
+      };
+      const isPlanning = doc.metadata?.type === "planning";
       timeline.push({
-        type: doc.metadata && typeof doc.metadata === "object" && (doc.metadata as Record<string, unknown>).type === "planning" ? "planning" : "message",
+        type: isPlanning ? "planning" : "message",
         role: doc.role,
         content: doc.content,
         session: doc.sessionId ?? "unknown",
         ...(doc.agentId ? { agentId: doc.agentId } : {}),
+        ...(isPlanning ? { metadata: doc.metadata } : {}),
         _ts: doc.createdAt,
       });
     }
 
     for (const item of items) {
-      const doc = item.toObject() as Record<string, unknown> & { createdAt?: Date };
+      const doc = item.toObject() as {
+        name: string;
+        description: string;
+        tags: string[];
+        data: unknown;
+        status: string;
+        sessionId?: string;
+        createdAt: Date;
+      };
       timeline.push({
         type: "action",
         name: doc.name,
         description: doc.description,
+        tags: doc.tags,
         data: doc.data,
+        status: doc.status,
         session: doc.sessionId ?? "unknown",
         _ts: doc.createdAt,
       });
     }
 
-    for (const logDoc of logs) {
-      const doc = logDoc.toObject() as Record<string, unknown> & { createdAt?: Date; level?: string; message?: string };
+    for (const log of logs) {
+      const doc = log.toObject() as {
+        method: string;
+        path: string;
+        statusCode: number;
+        durationMs: number;
+        sessionId?: string;
+        createdAt: Date;
+      };
       timeline.push({
         type: "log",
         method: doc.method,
@@ -219,8 +213,6 @@ router.get("/context", async (req, res) => {
         statusCode: doc.statusCode,
         durationMs: doc.durationMs,
         session: doc.sessionId ?? "unknown",
-        ...(doc.level ? { level: doc.level } : {}),
-        ...(doc.message ? { message: doc.message } : {}),
         _ts: doc.createdAt,
       });
     }
@@ -234,11 +226,7 @@ router.get("/context", async (req, res) => {
   }
 });
 
-/**
- * GET /sync/projects
- * List all unique projectIds stored in the brain.
- */
-router.get("/projects", async (_req, res) => {
+router.get("/projects", async (_req: Request, res: Response): Promise<void> => {
   try {
     const projectIds = await Message.distinct("projectId", { projectId: { $ne: null } });
     res.json({ projects: projectIds, total: projectIds.length });
@@ -247,20 +235,12 @@ router.get("/projects", async (_req, res) => {
   }
 });
 
-/**
- * GET /sync/sessions
- * List all unique sessionIds for a given projectId.
- */
-router.get("/sessions", async (req, res) => {
+router.get("/sessions", async (req: Request, res: Response): Promise<void> => {
   const { projectId } = req.query as Record<string, string>;
   try {
     const filter = projectId ? { projectId, sessionId: { $ne: null } } : { sessionId: { $ne: null } };
     const sessionIds = await Message.distinct("sessionId", filter);
-    res.json({
-      projectId: projectId ?? null,
-      sessions: sessionIds,
-      total: sessionIds.length,
-    });
+    res.json({ projectId: projectId ?? null, sessions: sessionIds, total: sessionIds.length });
   } catch (err: unknown) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to list sessions" });
   }

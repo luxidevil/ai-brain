@@ -1,9 +1,41 @@
-import { useEffect, useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 type Status = "checking" | "ok" | "error";
 type Tab = "thoughts" | "overview" | "howto";
 
 const API = "/api";
+
+interface Thought {
+  thoughtId: string;
+  description: string;
+  key: string | null;
+  counts: { messages: number; items: number; logs: number };
+  total: number;
+  createdAt: string | null;
+}
+
+interface HealthData {
+  status: string;
+  mongodb: string;
+  uptime: number;
+}
+
+interface TimelineEntry {
+  type: string;
+  role?: string;
+  content?: string;
+  name?: string;
+  description?: string;
+  data?: unknown;
+  metadata?: Record<string, unknown>;
+  status?: string;
+  tags?: string[];
+  sessionId?: string;
+  method?: string;
+  path?: string;
+  statusCode?: number;
+  createdAt: string;
+}
 
 function StatusDot({ status }: { status: Status }) {
   const colors: Record<Status, string> = {
@@ -24,6 +56,7 @@ function Badge({ children, color = "blue" }: { children: React.ReactNode; color?
     gray: "bg-gray-100 text-gray-600",
     yellow: "bg-yellow-100 text-yellow-700",
     cyan: "bg-cyan-100 text-cyan-700",
+    amber: "bg-amber-100 text-amber-700",
   };
   return (
     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${map[color] ?? map.blue}`}>
@@ -74,67 +107,56 @@ function formatTime(dateStr: string) {
   });
 }
 
-interface TimelineEntry {
-  type: "message" | "planning" | "action";
-  role?: string;
-  content?: string;
-  name?: string;
-  description?: string;
-  data?: unknown;
-  metadata?: Record<string, unknown>;
-  status?: string;
-  tags?: string[];
-  sessionId?: string;
-  createdAt: string;
+// ── AuthBanner ──────────────────────────────────────────────────────────────
+
+function AuthBanner({
+  token,
+  onToken,
+}: {
+  token: string;
+  onToken: (t: string) => void;
+}) {
+  const [input, setInput] = useState("");
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-8">
+      <h2 className="font-semibold text-blue-900 mb-1">Enter your Brain Token</h2>
+      <p className="text-sm text-blue-700 mb-4">
+        Your Brain Token (starts with <code className="bg-blue-100 px-1 rounded">bt_</code>) is required to view and manage thoughts.
+        Don't have one? Register via <code className="bg-blue-100 px-1 rounded">POST /api/auth/register</code>.
+      </p>
+      <div className="flex gap-2">
+        <input
+          type="password"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && input && onToken(input)}
+          placeholder="bt_..."
+          className="flex-1 px-3 py-2 border border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
+        <button
+          onClick={() => input && onToken(input)}
+          className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Connect
+        </button>
+      </div>
+    </div>
+  );
 }
 
-function buildTimeline(thought: Record<string, unknown>): TimelineEntry[] {
-  const entries: TimelineEntry[] = [];
-
-  const messages = (thought.messages ?? []) as Record<string, unknown>[];
-  for (const m of messages) {
-    const meta = m.metadata as Record<string, unknown> | null;
-    const isPlanning = meta && meta.type === "planning";
-    entries.push({
-      type: isPlanning ? "planning" : "message",
-      role: m.role as string,
-      content: m.content as string,
-      metadata: meta ?? undefined,
-      sessionId: m.sessionId as string,
-      createdAt: m.createdAt as string,
-    });
-  }
-
-  const items = (thought.items ?? []) as Record<string, unknown>[];
-  for (const item of items) {
-    entries.push({
-      type: "action",
-      name: item.name as string,
-      description: item.description as string,
-      data: item.data,
-      status: item.status as string,
-      tags: item.tags as string[],
-      sessionId: item.sessionId as string,
-      createdAt: item.createdAt as string,
-    });
-  }
-
-  entries.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-  return entries;
-}
+// ── ChatBubble ───────────────────────────────────────────────────────────────
 
 function ChatBubble({ entry }: { entry: TimelineEntry }) {
   if (entry.type === "planning") {
     return (
       <div className="flex gap-3 items-start py-3">
         <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-sm shrink-0">🧠</div>
-        <div className="flex-1 min-w-0">
+        <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs font-semibold text-amber-700">Planning</span>
-            {entry.sessionId && <span className="text-xs text-gray-400 font-mono">#{entry.sessionId}</span>}
             <span className="text-xs text-gray-400">{formatTime(entry.createdAt)}</span>
           </div>
-          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap font-mono">
             {entry.content}
           </div>
         </div>
@@ -146,49 +168,72 @@ function ChatBubble({ entry }: { entry: TimelineEntry }) {
     return (
       <div className="flex gap-3 items-start py-3">
         <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-sm shrink-0">⚡</div>
-        <div className="flex-1 min-w-0">
+        <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs font-semibold text-purple-700">Action</span>
-            <span className="text-xs font-mono text-gray-600">{entry.name}</span>
-            {entry.sessionId && <span className="text-xs text-gray-400 font-mono">#{entry.sessionId}</span>}
+            <Badge color="purple">{entry.name}</Badge>
             <span className="text-xs text-gray-400">{formatTime(entry.createdAt)}</span>
           </div>
-          <div className="bg-purple-50 border border-purple-200 rounded-lg px-4 py-3">
-            {entry.description && <p className="text-sm text-gray-700">{entry.description}</p>}
-            {entry.data && (
-              <pre className="mt-2 text-xs text-gray-600 font-mono bg-white rounded px-3 py-2 overflow-auto max-h-32">
-                {JSON.stringify(entry.data, null, 2)}
-              </pre>
-            )}
+          {entry.description && (
+            <p className="text-sm text-gray-600 mb-1">{entry.description}</p>
+          )}
+          {entry.tags && entry.tags.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              {entry.tags.map((tag) => (
+                <Badge key={tag} color="gray">{tag}</Badge>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (entry.type === "log") {
+    const isError = (entry.statusCode ?? 0) >= 400;
+    return (
+      <div className="flex gap-3 items-start py-2">
+        <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs shrink-0 font-mono text-gray-500">
+          {entry.method?.slice(0, 3)}
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <span className={`text-xs font-mono ${isError ? "text-red-600" : "text-gray-600"}`}>
+              {entry.method} {entry.path}
+            </span>
+            <Badge color={isError ? "red" : "green"}>{entry.statusCode}</Badge>
+            <span className="text-xs text-gray-400">{formatTime(entry.createdAt)}</span>
           </div>
         </div>
       </div>
     );
   }
 
+  // message
   const isUser = entry.role === "user";
-  const isAgent = entry.role === "agent" || entry.role === "assistant";
+  const isAssistant = entry.role === "assistant";
   const isSystem = entry.role === "system";
 
-  const avatarBg = isUser ? "bg-blue-100" : isAgent ? "bg-green-100" : "bg-gray-100";
-  const avatarIcon = isUser ? "👤" : isAgent ? "🤖" : "⚙️";
-  const bubbleBg = isUser
-    ? "bg-blue-50 border-blue-200"
-    : isAgent
-    ? "bg-green-50 border-green-200"
-    : "bg-gray-50 border-gray-200";
-  const labelColor = isUser ? "text-blue-700" : isAgent ? "text-green-700" : "text-gray-500";
+  const avatarBg = isUser ? "bg-blue-500" : isAssistant ? "bg-green-500" : "bg-gray-400";
+  const avatarLabel = isUser ? "U" : isAssistant ? "A" : "S";
 
   return (
     <div className={`flex gap-3 items-start py-3 ${isUser ? "flex-row-reverse" : ""}`}>
-      <div className={`w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center text-sm shrink-0`}>{avatarIcon}</div>
-      <div className={`flex-1 min-w-0 ${isUser ? "flex flex-col items-end" : ""}`}>
-        <div className={`flex items-center gap-2 mb-1 ${isUser ? "flex-row-reverse" : ""}`}>
-          <span className={`text-xs font-semibold ${labelColor}`}>{entry.role}</span>
-          {entry.sessionId && <span className="text-xs text-gray-400 font-mono">#{entry.sessionId}</span>}
+      <div className={`w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center text-xs font-bold text-white shrink-0`}>
+        {avatarLabel}
+      </div>
+      <div className={`flex-1 max-w-[80%] ${isUser ? "items-end flex flex-col" : ""}`}>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xs text-gray-400 capitalize">{entry.role}</span>
           <span className="text-xs text-gray-400">{formatTime(entry.createdAt)}</span>
         </div>
-        <div className={`border rounded-lg px-4 py-3 text-sm text-gray-800 leading-relaxed whitespace-pre-wrap ${bubbleBg} ${isUser ? "max-w-[80%]" : ""}`}>
+        <div className={`rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${
+          isUser
+            ? "bg-blue-600 text-white rounded-tr-sm"
+            : isSystem
+              ? "bg-gray-100 text-gray-600 font-mono text-xs border border-gray-200 rounded-tl-sm"
+              : "bg-white border border-gray-200 text-gray-800 rounded-tl-sm"
+        }`}>
           {entry.content}
         </div>
       </div>
@@ -196,370 +241,925 @@ function ChatBubble({ entry }: { entry: TimelineEntry }) {
   );
 }
 
-function ThoughtChatView({ thoughtId, onBack }: { thoughtId: string; onBack: () => void }) {
-  const [thought, setThought] = useState<Record<string, unknown> | null>(null);
+// ── ReadByAI Modal ────────────────────────────────────────────────────────
+
+function ReadByAIModal({
+  thoughtId,
+  token,
+  onClose,
+}: {
+  thoughtId: string;
+  token: string;
+  onClose: () => void;
+}) {
+  const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [sessionFilter, setSessionFilter] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    fetch(`${API}/brain/${thoughtId}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.error) {
-          setError(data.error);
-        } else {
-          setThought(data);
+    (async () => {
+      setLoading(true);
+      try {
+        const r = await fetch(
+          `${API}/sync/context?projectId=${encodeURIComponent(thoughtId)}&limit=300`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const d = await r.json();
+        const events: Record<string, unknown>[] = d.events ?? [];
+
+        const lines: string[] = [
+          `=== AGENT BRAIN CONTEXT: ${thoughtId} ===`,
+          `Retrieved: ${new Date().toLocaleString()}`,
+          `Total events: ${events.length}`,
+          "",
+        ];
+
+        for (const e of events) {
+          if (e.type === "message") {
+            lines.push(`[${String(e.role ?? "?").toUpperCase()}] ${String(e.content ?? "")}`);
+          } else if (e.type === "planning") {
+            lines.push(`[THINKING] ${String(e.content ?? "")}`);
+          } else if (e.type === "action") {
+            lines.push(`[ACTION:${String(e.name ?? "")}] ${String(e.description ?? "")}`);
+          } else if (e.type === "log") {
+            lines.push(`[LOG] ${String(e.method ?? "")} ${String(e.path ?? "")} → ${String(e.statusCode ?? "")}`);
+          }
         }
-      })
-      .catch(() => setError("Failed to load thought"))
-      .finally(() => setLoading(false));
-  }, [thoughtId]);
 
-  if (loading) return <Spinner />;
-  if (error) return <EmptyState label={error} />;
-  if (!thought) return <EmptyState label="No data" />;
+        if (events.length === 0) {
+          lines.push("(No events recorded yet for this thought)");
+        }
 
-  const timeline = buildTimeline(thought);
-  const sessions = [...new Set(timeline.filter((e) => e.sessionId).map((e) => e.sessionId))];
-  const filtered = sessionFilter
-    ? timeline.filter((e) => e.sessionId === sessionFilter)
-    : timeline;
+        lines.push("", "=== END OF CONTEXT ===");
+        setText(lines.join("\n"));
+      } catch {
+        setText("Failed to load context.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [thoughtId, token]);
 
-  const counts = thought.counts as Record<string, number>;
+  const copy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3 flex-wrap">
-        <button onClick={onBack} className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">
-          ← Back
-        </button>
-        <h2 className="text-lg font-bold text-gray-900">{thoughtId}</h2>
-        {thought.description && (
-          <span className="text-sm text-gray-500">— {thought.description as string}</span>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          <Badge color="blue">{counts.messages} messages</Badge>
-          <Badge color="purple">{counts.items} actions</Badge>
-          <Badge color="gray">{counts.logs} logs</Badge>
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <div>
+            <h3 className="font-bold text-gray-900">Read by AI</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Copy this and paste it into any AI assistant as context</p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={copy}
+              disabled={loading}
+              className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              {copied ? "Copied!" : "Copy All"}
+            </button>
+            <button onClick={onClose} className="px-3 py-1.5 bg-gray-100 text-gray-600 text-sm rounded-lg hover:bg-gray-200">
+              Close
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto p-5">
+          {loading ? (
+            <Spinner />
+          ) : (
+            <pre className="text-xs font-mono text-gray-700 whitespace-pre-wrap leading-relaxed bg-gray-50 rounded-lg p-4 border border-gray-200">
+              {text}
+            </pre>
+          )}
         </div>
       </div>
+    </div>
+  );
+}
 
-      {sessions.length > 1 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-gray-500 font-medium">Sessions:</span>
-          <button
-            onClick={() => setSessionFilter("")}
-            className={`text-xs px-2 py-1 rounded-full font-medium ${!sessionFilter ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
-          >
-            All
+// ── AppendModal ───────────────────────────────────────────────────────────
+
+function AppendModal({
+  thoughtId,
+  token,
+  onClose,
+  onDone,
+}: {
+  thoughtId: string;
+  token: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [mode, setMode] = useState<"quick" | "json">("quick");
+  const [role, setRole] = useState<"user" | "assistant" | "system">("user");
+  const [content, setContent] = useState("");
+  const [jsonText, setJsonText] = useState(
+    JSON.stringify(
+      {
+        messages: [{ role: "user", content: "Hello" }],
+        planning: [{ content: "Thinking step", step: 1 }],
+        actions: [{ name: "my-action", description: "Did something" }],
+      },
+      null,
+      2
+    )
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const submit = async () => {
+    setError(""); setSuccess(""); setSaving(true);
+    try {
+      let body: Record<string, unknown>;
+
+      if (mode === "quick") {
+        if (!content.trim()) { setError("Content cannot be empty"); setSaving(false); return; }
+        body = {
+          projectId: thoughtId,
+          messages: [{ role, content: content.trim() }],
+        };
+      } else {
+        let parsed: Record<string, unknown>;
+        try { parsed = JSON.parse(jsonText); } catch { setError("Invalid JSON"); setSaving(false); return; }
+        body = { projectId: thoughtId, ...parsed };
+      }
+
+      const r = await fetch(`${API}/sync`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const d = await r.json();
+      if (!r.ok) { setError(d.error ?? "Failed"); setSaving(false); return; }
+      setSuccess(`Saved ${d.saved ?? "?"} item(s) successfully`);
+      setContent(""); 
+      setTimeout(() => { onDone(); onClose(); }, 1200);
+    } catch {
+      setError("Request failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <div>
+            <h3 className="font-bold text-gray-900">Append to Thought</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Add messages or data to <strong>{thoughtId}</strong></p>
+          </div>
+          <button onClick={onClose} className="px-3 py-1.5 bg-gray-100 text-gray-600 text-sm rounded-lg hover:bg-gray-200">
+            Cancel
           </button>
-          {sessions.map((s) => (
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div className="flex gap-2">
             <button
-              key={s}
-              onClick={() => setSessionFilter(s!)}
-              className={`text-xs px-2 py-1 rounded-full font-mono font-medium ${sessionFilter === s ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+              onClick={() => setMode("quick")}
+              className={`flex-1 py-2 text-sm rounded-lg font-medium transition-colors ${mode === "quick" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
             >
-              {s}
+              Quick Message
             </button>
-          ))}
+            <button
+              onClick={() => setMode("json")}
+              className={`flex-1 py-2 text-sm rounded-lg font-medium transition-colors ${mode === "json" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+            >
+              Paste JSON
+            </button>
+          </div>
+
+          {mode === "quick" && (
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                {(["user", "assistant", "system"] as const).map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setRole(r)}
+                    className={`px-3 py-1.5 text-sm rounded-lg capitalize transition-colors ${role === r ? "bg-blue-100 text-blue-700 font-semibold" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="Type your message here..."
+                rows={5}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+              />
+            </div>
+          )}
+
+          {mode === "json" && (
+            <div className="space-y-2">
+              <p className="text-xs text-gray-500">Paste a JSON object with <code className="bg-gray-100 px-1 rounded">messages</code>, <code className="bg-gray-100 px-1 rounded">planning</code>, <code className="bg-gray-100 px-1 rounded">actions</code>, or <code className="bg-gray-100 px-1 rounded">logs</code> arrays.</p>
+              <textarea
+                value={jsonText}
+                onChange={(e) => setJsonText(e.target.value)}
+                rows={10}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+              />
+            </div>
+          )}
+
+          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+          {success && <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">{success}</p>}
+
+          <button
+            onClick={submit}
+            disabled={saving}
+            className="w-full py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          >
+            {saving ? "Saving..." : "Append to Thought"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ThoughtDetail ─────────────────────────────────────────────────────────
+
+function ThoughtDetail({
+  thoughtId,
+  token,
+  onBack,
+}: {
+  thoughtId: string;
+  token: string;
+  onBack: () => void;
+}) {
+  const [data, setData] = useState<{
+    messages: TimelineEntry[];
+    items: TimelineEntry[];
+    logs: TimelineEntry[];
+    thought?: { key?: string; description?: string };
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"timeline" | "secrets">("timeline");
+  const [showReadAI, setShowReadAI] = useState(false);
+  const [showAppend, setShowAppend] = useState(false);
+  const [keyCopied, setKeyCopied] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API}/brain/${encodeURIComponent(thoughtId)}?limit=200`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error("Failed");
+      const d = await r.json();
+      setData(d);
+    } catch {
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [thoughtId, token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const thoughtKey = data?.thought?.key;
+
+  const copyKey = () => {
+    if (!thoughtKey) return;
+    navigator.clipboard.writeText(thoughtKey).then(() => {
+      setKeyCopied(true);
+      setTimeout(() => setKeyCopied(false), 2000);
+    });
+  };
+
+  const timeline: TimelineEntry[] = data
+    ? [
+        ...data.messages.map((m) => ({
+          ...m,
+          type: (m.metadata as { type?: string } | null)?.type === "planning" ? "planning" : "message",
+          createdAt: m.createdAt,
+        })),
+        ...data.items.map((i) => ({ ...i, type: "action" })),
+        ...data.logs.map((l) => ({ ...l, type: "log" })),
+      ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    : [];
+
+  return (
+    <div>
+      <button
+        onClick={onBack}
+        className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 mb-6 transition-colors"
+      >
+        ← Back to Thoughts
+      </button>
+
+      {/* Thought Key banner — agents use this, NOT the Brain Token */}
+      {thoughtKey && (
+        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-purple-700 mb-1">
+                🔑 Thought Key — use this in your agent (not the Brain Token)
+              </p>
+              <code className="text-xs text-purple-900 bg-purple-100 rounded px-2 py-1 block truncate font-mono">
+                {thoughtKey}
+              </code>
+              <p className="text-xs text-purple-600 mt-1.5">
+                <code className="bg-purple-100 rounded px-1">Authorization: Bearer {thoughtKey.slice(0, 12)}...</code>
+                &nbsp;— projectId is auto-bound to <strong>{thoughtId}</strong>
+              </p>
+            </div>
+            <button
+              onClick={copyKey}
+              className="shrink-0 px-3 py-1.5 text-xs bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
+            >
+              {keyCopied ? "Copied!" : "Copy Key"}
+            </button>
+          </div>
         </div>
       )}
 
-      <Card className="px-5 py-2">
-        {filtered.length === 0 ? (
-          <EmptyState label="No entries for this filter" />
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">{thoughtId}</h2>
+          <p className="text-sm text-gray-500 mt-0.5">{data?.thought?.description || "Thought detail"}</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setShowReadAI(true)}
+            className="px-3 py-1.5 text-sm bg-green-600 text-white hover:bg-green-700 rounded-lg transition-colors font-medium"
+          >
+            📖 Read by AI
+          </button>
+          <button
+            onClick={() => setShowAppend(true)}
+            className="px-3 py-1.5 text-sm bg-purple-600 text-white hover:bg-purple-700 rounded-lg transition-colors font-medium"
+          >
+            + Append
+          </button>
+          <button
+            onClick={() => setActiveTab("timeline")}
+            className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+              activeTab === "timeline" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            Timeline
+          </button>
+          <button
+            onClick={() => setActiveTab("secrets")}
+            className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+              activeTab === "secrets" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            Secrets
+          </button>
+          <button
+            onClick={load}
+            className="px-3 py-1.5 text-sm bg-gray-100 text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {activeTab === "timeline" && (
+        <Card className="divide-y divide-gray-100">
+          {loading ? (
+            <Spinner />
+          ) : timeline.length === 0 ? (
+            <div className="px-6 py-4">
+              <EmptyState label="No events yet. Use 'Append' to add messages, or sync from your agent." />
+            </div>
+          ) : (
+            <div className="px-6 py-2">
+              {timeline.map((entry, i) => (
+                <ChatBubble key={i} entry={entry} />
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {activeTab === "secrets" && (
+        <SecretsPanel thoughtId={thoughtId} token={token} />
+      )}
+
+      {showReadAI && (
+        <ReadByAIModal
+          thoughtId={thoughtId}
+          token={token}
+          onClose={() => setShowReadAI(false)}
+        />
+      )}
+
+      {showAppend && (
+        <AppendModal
+          thoughtId={thoughtId}
+          token={token}
+          onClose={() => setShowAppend(false)}
+          onDone={load}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── SecretsPanel ─────────────────────────────────────────────────────────
+
+function SecretsPanel({ thoughtId, token }: { thoughtId: string; token: string }) {
+  const [secrets, setSecrets] = useState<Record<string, { value: string; scope: string; source: string }>>({});
+  const [loading, setLoading] = useState(true);
+  const [newKey, setNewKey] = useState("");
+  const [newVal, setNewVal] = useState("");
+  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API}/secrets/thought/${encodeURIComponent(thoughtId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = await r.json();
+      setSecrets(d.secrets ?? {});
+    } catch {
+      setSecrets({});
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [thoughtId]);
+
+  const addSecret = async () => {
+    if (!newKey || !newVal) return;
+    await fetch(`${API}/secrets/thought/${encodeURIComponent(thoughtId)}/${encodeURIComponent(newKey)}`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ value: newVal }),
+    });
+    setNewKey(""); setNewVal("");
+    load();
+  };
+
+  const deleteSecret = async (key: string) => {
+    if (!confirm(`Delete secret "${key}"?`)) return;
+    await fetch(`${API}/secrets/thought/${encodeURIComponent(thoughtId)}/${encodeURIComponent(key)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    load();
+  };
+
+  if (loading) return <Spinner />;
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-4">
+        <h3 className="font-semibold text-sm text-gray-700 mb-3">Add Secret</h3>
+        <div className="flex gap-2">
+          <input
+            value={newKey}
+            onChange={(e) => setNewKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_"))}
+            placeholder="KEY_NAME"
+            className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono"
+          />
+          <input
+            value={newVal}
+            onChange={(e) => setNewVal(e.target.value)}
+            placeholder="value"
+            type="password"
+            className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          />
+          <button
+            onClick={addSecret}
+            className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+          >
+            Save
+          </button>
+        </div>
+      </Card>
+
+      <Card className="overflow-hidden">
+        {Object.keys(secrets).length === 0 ? (
+          <EmptyState label="No secrets yet." />
         ) : (
-          <div className="divide-y divide-gray-100">
-            {filtered.map((entry, i) => (
-              <ChatBubble key={i} entry={entry} />
-            ))}
-          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-2 text-left font-medium text-gray-600">Key</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-600">Value</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-600">Scope</th>
+                <th className="px-4 py-2"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {Object.entries(secrets).map(([k, s]) => (
+                <tr key={k}>
+                  <td className="px-4 py-2 font-mono text-xs text-gray-800">{k}</td>
+                  <td className="px-4 py-2 font-mono text-xs text-gray-600">
+                    <span
+                      className="cursor-pointer select-none"
+                      onClick={() => setRevealed((r) => ({ ...r, [k]: !r[k] }))}
+                    >
+                      {revealed[k] ? s.value : "•".repeat(Math.min(s.value.length, 16))}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2">
+                    <Badge color={s.scope === "brain" ? "blue" : "purple"}>{s.scope}</Badge>
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    {s.scope === "thought" && (
+                      <button
+                        onClick={() => deleteSecret(k)}
+                        className="text-xs text-red-500 hover:text-red-700"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </Card>
     </div>
   );
 }
 
-function ThoughtsTab() {
-  const [thoughts, setThoughts] = useState<Record<string, unknown>[]>([]);
+// ── ThoughtsTab ──────────────────────────────────────────────────────────
+
+function ThoughtsTab({ token }: { token: string }) {
+  const [thoughts, setThoughts] = useState<Thought[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newId, setNewId] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [createErr, setCreateErr] = useState("");
+  const [createdKey, setCreatedKey] = useState<{ thoughtId: string; key: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${API}/brain`);
-      const j = await r.json();
-      setThoughts(j.thoughts ?? []);
+      const r = await fetch(`${API}/brain`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error("Failed");
+      const d = await r.json();
+      setThoughts(d.thoughts ?? []);
     } catch {
       setThoughts([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [token]);
 
   useEffect(() => { load(); }, [load]);
 
+  const create = async () => {
+    if (!newId.trim()) { setCreateErr("Thought ID is required"); return; }
+    setCreateErr("");
+    try {
+      const r = await fetch(`${API}/brain`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ thoughtId: newId.trim(), description: newDesc.trim() }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setCreateErr(d.error ?? "Failed"); return; }
+      setCreating(false);
+      setNewId(""); setNewDesc("");
+      setCreatedKey({ thoughtId: d.thoughtId, key: d.key });
+      load();
+    } catch {
+      setCreateErr("Failed to create thought");
+    }
+  };
+
+  const copy = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  };
+
   if (selected) {
-    return <ThoughtChatView thoughtId={selected} onBack={() => setSelected(null)} />;
+    return (
+      <ThoughtDetail
+        thoughtId={selected}
+        token={token}
+        onBack={() => { setSelected(null); load(); }}
+      />
+    );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">All Thoughts</h2>
-        <button onClick={load} className="px-3 py-1.5 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium">Refresh</button>
-        <span className="text-xs text-gray-400 ml-auto">{thoughts.length} thoughts</span>
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-lg font-bold text-gray-900">Thoughts</h2>
+        <div className="flex gap-2">
+          <button
+            onClick={load}
+            className="px-3 py-1.5 text-sm bg-gray-100 text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
+          >
+            Refresh
+          </button>
+          <button
+            onClick={() => setCreating(true)}
+            className="px-3 py-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-colors"
+          >
+            + New Thought
+          </button>
+        </div>
       </div>
 
-      {loading ? <Spinner /> : thoughts.length === 0 ? (
-        <EmptyState label="No thoughts in the brain yet. Create one via POST /api/brain" />
+      {creating && (
+        <Card className="p-5 mb-5">
+          <h3 className="font-semibold text-gray-800 mb-3">Create Thought</h3>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Thought ID *</label>
+              <input
+                value={newId}
+                onChange={(e) => setNewId(e.target.value)}
+                placeholder="my-project"
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Description</label>
+              <input
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+                placeholder="What is this thought about?"
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+            </div>
+            {createErr && <p className="text-sm text-red-600">{createErr}</p>}
+            <div className="flex gap-2">
+              <button
+                onClick={create}
+                className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+              >
+                Create
+              </button>
+              <button
+                onClick={() => { setCreating(false); setCreateErr(""); }}
+                className="px-4 py-2 bg-gray-100 text-gray-600 text-sm rounded-lg hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {createdKey && (
+        <Card className="p-5 mb-5 border-green-200 bg-green-50">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="font-semibold text-green-800 mb-1">Thought created: {createdKey.thoughtId}</p>
+              <p className="text-sm text-green-700 mb-2">Save this Thought Key — it won't be shown again.</p>
+              <code className="text-xs bg-green-100 border border-green-300 rounded px-2 py-1 block break-all">
+                {createdKey.key}
+              </code>
+            </div>
+            <div className="flex gap-2 ml-4">
+              <button
+                onClick={() => copy(createdKey.key)}
+                className="text-sm text-green-700 hover:text-green-900 font-medium"
+              >
+                {copied ? "Copied!" : "Copy"}
+              </button>
+              <button
+                onClick={() => setCreatedKey(null)}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {loading ? (
+        <Spinner />
+      ) : thoughts.length === 0 ? (
+        <EmptyState label='No thoughts yet. Create one to get started.' />
       ) : (
         <div className="grid gap-3">
-          {thoughts.map((t) => {
-            const counts = t.counts as Record<string, number>;
-            return (
-              <Card key={t.thoughtId as string} className="p-5 cursor-pointer hover:border-blue-300 hover:shadow-md transition-all" >
-                <div onClick={() => setSelected(t.thoughtId as string)} className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-lg shrink-0">
-                    💭
+          {thoughts.map((t) => (
+            <Card
+              key={t.thoughtId}
+              className="p-5 cursor-pointer hover:border-blue-300 transition-colors hover:shadow-md"
+              onClick={() => setSelected(t.thoughtId)}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="font-semibold text-gray-900">{t.thoughtId}</h3>
+                    {!t.key && <Badge color="amber">Legacy</Badge>}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-gray-900">{t.thoughtId as string}</h3>
-                      {t.key ? (
-                        <Badge color="green">has key</Badge>
-                      ) : (
-                        <Badge color="yellow">legacy</Badge>
-                      )}
-                    </div>
-                    {t.description && (t.description as string) !== "(legacy - no key assigned)" && (
-                      <p className="text-sm text-gray-500 mt-0.5">{t.description as string}</p>
-                    )}
-                    <div className="flex items-center gap-3 mt-2">
-                      <span className="text-xs text-gray-500">💬 {counts.messages} messages</span>
-                      <span className="text-xs text-gray-500">⚡ {counts.items} actions</span>
-                      <span className="text-xs text-gray-500">📋 {counts.logs} logs</span>
-                      <span className="text-xs font-semibold text-gray-700 ml-auto">{t.total as number} total</span>
-                    </div>
-                  </div>
-                  <div className="text-gray-400 text-xl">→</div>
+                  <p className="text-sm text-gray-500 mb-3">{t.description || "No description"}</p>
+                  {t.key && (
+                    <code
+                      className="text-xs bg-gray-100 rounded px-1.5 py-0.5 text-gray-500 block truncate max-w-xs"
+                      title={t.key}
+                    >
+                      {t.key.substring(0, 20)}...
+                    </code>
+                  )}
                 </div>
-              </Card>
-            );
-          })}
+                <div className="flex gap-6 ml-6 shrink-0">
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-blue-600">{t.counts.messages}</div>
+                    <div className="text-xs text-gray-400">Messages</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-purple-600">{t.counts.items}</div>
+                    <div className="text-xs text-gray-400">Actions</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-gray-600">{t.counts.logs}</div>
+                    <div className="text-xs text-gray-400">Logs</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-gray-900">{t.total}</div>
+                    <div className="text-xs text-gray-400">Total</div>
+                  </div>
+                </div>
+              </div>
+              {t.createdAt && (
+                <p className="text-xs text-gray-400 mt-3">{timeAgo(t.createdAt)}</p>
+              )}
+            </Card>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function OverviewTab({ apiStatus, mongoStatus, health }: {
+// ── OverviewTab ──────────────────────────────────────────────────────────
+
+function OverviewTab({
+  apiStatus,
+  mongoStatus,
+  health,
+}: {
   apiStatus: Status;
   mongoStatus: Status;
-  health: Record<string, unknown> | null;
+  health: HealthData | null;
 }) {
   return (
     <div className="space-y-6">
-      <Card className="p-6">
-        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-5">Architecture</h2>
-        <div className="flex items-stretch gap-3">
-          <div className="flex-1 rounded-lg border border-blue-200 bg-blue-50 p-4 text-center">
-            <div className="text-2xl mb-2">🌐</div>
-            <div className="font-semibold text-blue-900 text-sm">Agent / App</div>
-            <div className="text-xs text-blue-600 mt-1">Uses thought key</div>
-          </div>
-          <div className="flex items-center text-gray-400 text-xl">→</div>
-          <div className="flex-1 rounded-lg border border-violet-200 bg-violet-50 p-4 text-center relative">
-            <div className="text-2xl mb-2">🧠</div>
-            <div className="font-semibold text-violet-900 text-sm">Brain API</div>
-            <div className="text-xs text-violet-600 mt-1">Auth + Routes</div>
-            {apiStatus === "ok" && (
-              <span className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">Live</span>
-            )}
-          </div>
-          <div className="flex items-center text-gray-400 text-xl">→</div>
-          <div className="flex-1 rounded-lg border border-green-200 bg-green-50 p-4 text-center relative">
-            <div className="text-2xl mb-2">🍃</div>
-            <div className="font-semibold text-green-900 text-sm">MongoDB Atlas</div>
-            <div className="text-xs text-green-600 mt-1">Thoughts + Data</div>
-            {mongoStatus === "ok" && (
-              <span className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">Connected</span>
-            )}
-          </div>
-        </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: "API", status: apiStatus, detail: health?.status ?? "—" },
+          { label: "MongoDB", status: mongoStatus, detail: health?.mongodb ?? "—" },
+          { label: "Uptime", status: "ok" as Status, detail: health ? `${Math.floor(health.uptime / 60)}m` : "—" },
+          { label: "Version", status: "ok" as Status, detail: "2.0" },
+        ].map((item) => (
+          <Card key={item.label} className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <StatusDot status={item.status} />
+              <span className="text-sm font-medium text-gray-700">{item.label}</span>
+            </div>
+            <p className="text-lg font-bold text-gray-900 capitalize">{item.detail}</p>
+          </Card>
+        ))}
+      </div>
 
-        {health && (
-          <div className="mt-5 border-t border-gray-100 pt-4">
-            <div className="text-xs font-semibold text-gray-400 uppercase mb-2">Live — GET /api/healthz</div>
-            <pre className="bg-gray-900 text-green-400 text-xs rounded-lg px-4 py-3 font-mono overflow-auto">
-              {JSON.stringify(health, null, 2)}
-            </pre>
-          </div>
-        )}
+      <Card className="p-5">
+        <h3 className="font-semibold text-gray-800 mb-3">Quick Reference</h3>
+        <div className="space-y-2 text-sm font-mono text-gray-600">
+          {[
+            ["GET", "/api/healthz", "Health check"],
+            ["POST", "/api/auth/register", "Register account"],
+            ["POST", "/api/auth/login", "Login"],
+            ["GET", "/api/brain", "List thoughts (brain token)"],
+            ["POST", "/api/brain", "Create thought"],
+            ["GET", "/api/brain/:id", "Get thought detail + messages"],
+            ["POST", "/api/sync", "Sync messages/actions/logs"],
+            ["GET", "/api/sync/context?projectId=x", "Get flat timeline"],
+            ["GET", "/api/messages", "List messages"],
+            ["GET", "/api/items", "List items/actions"],
+            ["GET", "/api/logs", "List request logs"],
+            ["GET", "/api/secrets/brain", "Brain-level secrets"],
+            ["GET", "/api/secrets/thought/:id", "Thought-level secrets"],
+          ].map(([method, path, desc]) => (
+            <div key={path} className="flex gap-3 items-center py-1 border-b border-gray-100 last:border-0">
+              <Badge color={method === "GET" ? "green" : method === "POST" ? "blue" : "orange"}>{method}</Badge>
+              <code className="text-xs text-gray-700 flex-1">{path}</code>
+              <span className="text-xs text-gray-400">{desc}</span>
+            </div>
+          ))}
+        </div>
       </Card>
     </div>
   );
 }
 
-function CopyBlock({ code, label }: { code: string; label?: string }) {
-  const [copied, setCopied] = useState(false);
-  function copy() {
-    navigator.clipboard.writeText(code).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }
-  return (
-    <div className="relative group">
-      {label && <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{label}</div>}
-      <pre className="bg-gray-900 text-green-400 text-xs rounded-lg px-4 py-4 font-mono overflow-auto whitespace-pre-wrap leading-relaxed">
-        {code}
-      </pre>
-      <button
-        onClick={copy}
-        className="absolute top-3 right-3 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 px-2 py-1 rounded transition-colors"
-      >
-        {copied ? "Copied!" : "Copy"}
-      </button>
-    </div>
-  );
-}
+// ── HowToTab ────────────────────────────────────────────────────────────
 
 function HowToTab() {
-  const domain = typeof window !== "undefined" ? window.location.origin : "https://YOUR-DOMAIN";
-
-  const listThoughts = `curl "${domain}/api/brain" \\
-  -H "Authorization: Bearer YOUR-BRAIN-TOKEN"`;
-
-  const createThought = `curl -X POST "${domain}/api/brain" \\
-  -H "Authorization: Bearer YOUR-BRAIN-TOKEN" \\
-  -H "Content-Type: application/json" \\
-  -d '{"thoughtId": "my-project", "description": "My cool project"}'
-
-# Response includes the thought key:
-# {"thoughtId":"my-project","key":"tk_abc123...","message":"Thought created."}`;
-
-  const readThought = `curl "${domain}/api/brain/my-project" \\
-  -H "Authorization: Bearer tk_YOUR-THOUGHT-KEY"`;
-
-  const pushData = `curl -X POST "${domain}/api/brain/my-project/sync" \\
-  -H "Authorization: Bearer tk_YOUR-THOUGHT-KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "sessionId": "session-001",
-    "messages": [
-      { "role": "user", "content": "Build me a login page" },
-      { "role": "assistant", "content": "I will create a login page with email and password fields..." }
-    ],
-    "planning": [
-      { "content": "The user wants a login page. I need to create the form component, add validation, set up the API endpoint with bcrypt..." }
-    ],
-    "actions": [
-      { "name": "created-file", "description": "Created login.tsx", "data": { "file": "src/login.tsx" } },
-      { "name": "installed-package", "description": "Installed bcrypt" }
-    ]
-  }'`;
-
-  const agentPrompt = `You have a memory API. Before doing anything, read your memory:
-
-curl "${domain}/api/brain/PROJECT-NAME" \\
-  -H "Authorization: Bearer tk_YOUR-THOUGHT-KEY"
-
-This returns every message, decision, and action from all past sessions.
-Read it fully before writing any code. Continue from where the last session left off.
-
-At the end of this session, save everything back:
-
-curl -X POST "${domain}/api/brain/PROJECT-NAME/sync" \\
-  -H "Authorization: Bearer tk_YOUR-THOUGHT-KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "sessionId": "session-XXX",
-    "messages": [ ...all messages from this session... ],
-    "planning": [ ...every thought and decision you made... ],
-    "actions":  [ ...files changed, commands run, packages installed... ]
-  }'`;
-
   return (
-    <div className="space-y-8">
-      <Card className="p-6 border-l-4 border-l-blue-500">
-        <h2 className="font-bold text-gray-900 mb-1">How the Brain works</h2>
-        <p className="text-sm text-gray-600 leading-relaxed">
-          <strong>Brain</strong> = your server (master token).
-          <strong> Thought</strong> = a project (its own key).
-          Each thought contains messages, planning, actions, and logs. An agent only needs the thought key to read/write its data — no brain access needed.
-        </p>
-        <div className="mt-4 flex items-start gap-3 flex-wrap text-xs font-mono">
-          {[
-            { icon: "🧠", label: "Brain (master)", color: "bg-gray-100 text-gray-700" },
-            { icon: "→", label: "", color: "" },
-            { icon: "💭", label: "Thought (own key)", color: "bg-blue-100 text-blue-700" },
-            { icon: "→", label: "", color: "" },
-            { icon: "💬", label: "Messages + Planning + Actions", color: "bg-green-100 text-green-700" },
-          ].map((item, i) =>
-            item.label ? (
-              <span key={i} className={`px-2 py-1 rounded-full font-semibold ${item.color}`}>
-                {item.icon} {item.label}
-              </span>
-            ) : (
-              <span key={i} className="text-gray-300">{item.icon}</span>
-            )
-          )}
+    <div className="space-y-6 max-w-3xl">
+      <Card className="p-6">
+        <h3 className="font-bold text-gray-900 mb-4 text-lg">How to use Agent Brain</h3>
+        <div className="space-y-5 text-sm text-gray-700">
+          <div>
+            <h4 className="font-semibold text-gray-800 mb-2">1. Register & get your Brain Token</h4>
+            <p className="mb-2">Register via the API to get a <code className="bg-gray-100 px-1 rounded text-xs">bt_...</code> Brain Token.</p>
+            <pre className="bg-gray-900 text-green-400 rounded-lg p-3 text-xs overflow-auto">{`POST /api/auth/register
+{
+  "email": "you@example.com",
+  "password": "secret",
+  "name": "Your Name"
+}`}</pre>
+          </div>
+
+          <div>
+            <h4 className="font-semibold text-gray-800 mb-2">2. Create a Thought (project namespace)</h4>
+            <pre className="bg-gray-900 text-green-400 rounded-lg p-3 text-xs overflow-auto">{`POST /api/brain
+Authorization: Bearer bt_...
+
+{ "thoughtId": "my-project", "description": "My AI agent project" }`}</pre>
+          </div>
+
+          <div>
+            <h4 className="font-semibold text-gray-800 mb-2">3. Store messages from your agent</h4>
+            <pre className="bg-gray-900 text-green-400 rounded-lg p-3 text-xs overflow-auto">{`POST /api/sync
+Authorization: Bearer tk_... (Thought Key)
+
+{
+  "projectId": "my-project",
+  "sessionId": "session-001",
+  "messages": [
+    { "role": "user", "content": "Build me a website" },
+    { "role": "assistant", "content": "Sure! Here is the plan..." }
+  ],
+  "actions": [
+    { "name": "create-file", "description": "Created index.html" }
+  ]
+}`}</pre>
+          </div>
+
+          <div>
+            <h4 className="font-semibent text-gray-800 mb-2">4. Recall context in a new session</h4>
+            <pre className="bg-gray-900 text-green-400 rounded-lg p-3 text-xs overflow-auto">{`GET /api/sync/context?projectId=my-project
+Authorization: Bearer tk_...
+
+Returns chronological timeline of all events`}</pre>
+          </div>
         </div>
-      </Card>
-
-      <Card className="p-6 space-y-6">
-        <h2 className="font-bold text-gray-900">1. List all thoughts (brain token)</h2>
-        <CopyBlock code={listThoughts} />
-      </Card>
-
-      <Card className="p-6 space-y-6">
-        <h2 className="font-bold text-gray-900">2. Create a thought (brain token)</h2>
-        <CopyBlock code={createThought} />
-      </Card>
-
-      <Card className="p-6 space-y-6">
-        <h2 className="font-bold text-gray-900">3. Read a thought (thought key)</h2>
-        <CopyBlock code={readThought} />
-      </Card>
-
-      <Card className="p-6 space-y-6">
-        <h2 className="font-bold text-gray-900">4. Push data into a thought (thought key)</h2>
-        <CopyBlock code={pushData} />
-      </Card>
-
-      <Card className="p-6 space-y-6 border-l-4 border-l-purple-500">
-        <h2 className="font-bold text-gray-900">Agent prompt template</h2>
-        <p className="text-sm text-gray-500">Paste this into your agent's system prompt so it reads/writes its brain automatically:</p>
-        <CopyBlock code={agentPrompt} />
       </Card>
     </div>
   );
 }
 
+// ── App ──────────────────────────────────────────────────────────────────
+
 export default function App() {
-  const [tab, setTab] = useState<Tab>("thoughts");
   const [apiStatus, setApiStatus] = useState<Status>("checking");
   const [mongoStatus, setMongoStatus] = useState<Status>("checking");
-  const [health, setHealth] = useState<Record<string, unknown> | null>(null);
+  const [health, setHealth] = useState<HealthData | null>(null);
+  const [tab, setTab] = useState<Tab>("thoughts");
+  const [token, setToken] = useState(() => localStorage.getItem("brain_token") ?? "");
+
+  const checkHealth = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/healthz`);
+      if (!r.ok) throw new Error();
+      const d: HealthData = await r.json();
+      setHealth(d);
+      setApiStatus("ok");
+      setMongoStatus(d.mongodb === "connected" ? "ok" : "error");
+    } catch {
+      setApiStatus("error");
+      setMongoStatus("error");
+    }
+  }, []);
 
   useEffect(() => {
-    fetch(`${API}/healthz`)
-      .then((r) => r.json())
-      .then((data) => {
-        setHealth(data);
-        setApiStatus(data.status === "ok" ? "ok" : "error");
-        setMongoStatus(data.mongodb === "connected" ? "ok" : "error");
-      })
-      .catch(() => {
-        setApiStatus("error");
-        setMongoStatus("error");
-      });
-  }, []);
+    checkHealth();
+    const interval = setInterval(checkHealth, 30000);
+    return () => clearInterval(interval);
+  }, [checkHealth]);
+
+  const handleToken = (t: string) => {
+    setToken(t);
+    localStorage.setItem("brain_token", t);
+  };
 
   const tabs: { key: Tab; label: string; icon: string }[] = [
     { key: "thoughts", label: "Thoughts", icon: "💭" },
@@ -582,26 +1182,42 @@ export default function App() {
               <span className="text-xs text-gray-500">MongoDB</span>
             </div>
           </div>
-          <nav className="flex gap-1 bg-gray-100 rounded-lg p-1">
-            {tabs.map((t) => (
+          <div className="flex items-center gap-3">
+            {token && (
               <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors font-medium ${
-                  tab === t.key
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
+                onClick={() => { setToken(""); localStorage.removeItem("brain_token"); }}
+                className="text-xs text-gray-400 hover:text-red-500 transition-colors"
               >
-                {t.icon} {t.label}
+                Disconnect
               </button>
-            ))}
-          </nav>
+            )}
+            <nav className="flex gap-1 bg-gray-100 rounded-lg p-1">
+              {tabs.map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors font-medium ${
+                    tab === t.key
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {t.icon} {t.label}
+                </button>
+              ))}
+            </nav>
+          </div>
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8">
-        {tab === "thoughts" && <ThoughtsTab />}
+        {tab === "thoughts" && (
+          !token ? (
+            <AuthBanner token={token} onToken={handleToken} />
+          ) : (
+            <ThoughtsTab token={token} />
+          )
+        )}
         {tab === "overview" && <OverviewTab apiStatus={apiStatus} mongoStatus={mongoStatus} health={health} />}
         {tab === "howto" && <HowToTab />}
       </main>

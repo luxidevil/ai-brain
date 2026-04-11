@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
 import { rm, cp, mkdir } from "node:fs/promises";
+import { execSync } from "node:child_process";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -13,6 +14,16 @@ const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
+
+  // Build the React dashboard so it can be served as static files in production
+  const workspaceRoot = path.resolve(artifactDir, "..", "..");
+  const dashboardDir = path.resolve(workspaceRoot, "artifacts", "dashboard");
+  console.log("Building dashboard...");
+  execSync("pnpm --filter @workspace/dashboard run build", {
+    cwd: workspaceRoot,
+    env: { ...process.env, NODE_ENV: "production" },
+    stdio: "inherit",
+  });
 
   await esbuild({
     entryPoints: [path.resolve(artifactDir, "src/index.ts")],
@@ -118,15 +129,15 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
   });
+
+  // Copy the React dashboard into dist/public so Express can serve it in production
+  const publicDestDir = path.resolve(distDir, "public");
+  await mkdir(publicDestDir, { recursive: true });
+  await cp(path.resolve(dashboardDir, "dist", "public"), publicDestDir, { recursive: true });
+  console.log("Dashboard copied to dist/public ✓");
 }
 
-buildAll().then(async () => {
-  const publicSrc = path.resolve(artifactDir, "src/public");
-  const publicDst = path.resolve(artifactDir, "dist/public");
-  await mkdir(publicDst, { recursive: true });
-  await cp(publicSrc, publicDst, { recursive: true });
-  console.log("Copied public/ to dist/public/");
-}).catch((err) => {
+buildAll().catch((err) => {
   console.error(err);
   process.exit(1);
 });

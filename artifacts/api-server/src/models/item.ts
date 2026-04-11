@@ -25,6 +25,4 @@ const itemSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-itemSchema.index({ projectId: 1, sessionId: 1, createdAt: -1 });
-
 export const Item = mongoose.model("Item", itemSchema);

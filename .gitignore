@@ -44,20 +44,6 @@ Thumbs.db
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
-# Environment secrets — never commit these
-.env
-.env.local
-.env.*.local
-
-# Replit chat attachments
-attached_assets/
-screenshots/
-
-# Internal agent memory file
-replit.md
-.replit
-.replitignore
-
 # Replit
 .cache/
 .local/

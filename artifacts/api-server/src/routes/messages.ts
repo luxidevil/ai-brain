@@ -1,9 +1,10 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { Message } from "../models/message";
 
 const router = Router();
 
-router.get("/", async (req, res) => {
+router.get("/", async (_req: Request, res: Response): Promise<void> => {
+  const req = _req;
   try {
     const limit = Math.min(Number(req.query.limit) || 50, 200);
     const skip = Number(req.query.skip) || 0;
@@ -25,17 +26,17 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", async (req: Request, res: Response): Promise<void> => {
   try {
     const message = await Message.findById(req.params.id);
-    if (!message) return res.status(404).json({ error: "Message not found" });
+    if (!message) { res.status(404).json({ error: "Message not found" }); return; }
     res.json(message);
   } catch {
     res.status(404).json({ error: "Message not found" });
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", async (req: Request, res: Response): Promise<void> => {
   try {
     const message = await Message.create(req.body);
     res.status(201).json(message);
@@ -45,14 +46,16 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.post("/batch", async (req, res) => {
+router.post("/batch", async (req: Request, res: Response): Promise<void> => {
   try {
     const messages = req.body;
     if (!Array.isArray(messages) || messages.length === 0) {
-      return res.status(400).json({ error: "Body must be a non-empty array of messages" });
+      res.status(400).json({ error: "Body must be a non-empty array of messages" });
+      return;
     }
     if (messages.length > 100) {
-      return res.status(400).json({ error: "Maximum 100 messages per batch" });
+      res.status(400).json({ error: "Maximum 100 messages per batch" });
+      return;
     }
     const created = await Message.insertMany(messages);
     res.status(201).json({ created: created.length, data: created });
@@ -62,17 +65,17 @@ router.post("/batch", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", async (req: Request, res: Response): Promise<void> => {
   try {
     const message = await Message.findByIdAndDelete(req.params.id);
-    if (!message) return res.status(404).json({ error: "Message not found" });
+    if (!message) { res.status(404).json({ error: "Message not found" }); return; }
     res.json({ message: "Message deleted", id: req.params.id });
   } catch {
     res.status(404).json({ error: "Message not found" });
   }
 });
 
-router.delete("/", async (req, res) => {
+router.delete("/", async (req: Request, res: Response): Promise<void> => {
   try {
     const filter: Record<string, unknown> = {};
     if (req.query.projectId) filter.projectId = req.query.projectId;
@@ -80,7 +83,7 @@ router.delete("/", async (req, res) => {
 
     const result = await Message.deleteMany(filter);
     const scope = req.query.projectId
-      ? `project ${req.query.projectId}${req.query.sessionId ? ` / session ${req.query.sessionId}` : ""}`
+      ? `project ${String(req.query.projectId)}${req.query.sessionId ? ` / session ${String(req.query.sessionId)}` : ""}`
       : "all projects";
     res.json({ message: `Messages cleared for ${scope}`, deleted: result.deletedCount });
   } catch {

@@ -1,5 +1,4 @@
 import { mongoose } from "../lib/mongodb";
-import crypto from "crypto";
 
 const thoughtSchema = new mongoose.Schema(
   {
@@ -22,9 +21,5 @@ const thoughtSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
-thoughtSchema.statics.generateKey = function () {
-  return `tk_${crypto.randomBytes(32).toString("hex")}`;
-};
 
 export const Thought = mongoose.model("Thought", thoughtSchema);
