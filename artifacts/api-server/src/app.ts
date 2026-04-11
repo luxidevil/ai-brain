@@ -37,23 +37,25 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(requestLogger);
 
-// In production, serve React dashboard static files BEFORE auth middleware
-// so browsers can load CSS/JS without needing a Bearer token
+// In production, serve the React dashboard WITHOUT requiring auth so that:
+//   1. Known static files (CSS, JS, images) are served by express.static()
+//   2. All non-API routes (SPA deep links) serve index.html
+// Both MUST be registered before brainAuth so browsers can load assets freely.
 if (process.env.NODE_ENV === "production") {
   const publicDir = path.join(__dirname, "public");
+
+  // Serve known static files (assets, favicon, etc.)
   app.use(express.static(publicDir));
-}
 
-// Auth middleware only applies to routes registered after this point
-app.use(brainAuth);
-app.use("/api", router);
-
-// SPA fallback: serve index.html for all non-API routes in production
-if (process.env.NODE_ENV === "production") {
-  const publicDir = path.join(__dirname, "public");
-  app.get("/*path", (_req: Request, res: Response) => {
+  // SPA fallback: any path that does NOT start with /api gets index.html
+  // This lets React Router handle client-side routing
+  app.get(/^\/(?!api).*/, (_req: Request, res: Response) => {
     res.sendFile(path.join(publicDir, "index.html"));
   });
 }
+
+// Auth + API routes — everything below here requires a valid token
+app.use(brainAuth);
+app.use("/api", router);
 
 export default app;
