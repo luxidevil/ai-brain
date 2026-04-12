@@ -107,39 +107,161 @@ function formatTime(dateStr: string) {
   });
 }
 
-// ── AuthBanner ──────────────────────────────────────────────────────────────
+// ── LandingPage ─────────────────────────────────────────────────────────────
 
-function AuthBanner({
-  token,
-  onToken,
-}: {
-  token: string;
-  onToken: (t: string) => void;
-}) {
+function LandingPage({ onToken }: { onToken: (t: string) => void }) {
   const [input, setInput] = useState("");
+  const [showToken, setShowToken] = useState(false);
+  const host = window.location.origin;
+
+  const exampleSnippet = `import requests
+
+HEADERS = {"Authorization": "Bearer YOUR_THOUGHT_KEY"}
+
+# Write — sync agent activity
+requests.post("${host}/api/sync", headers=HEADERS, json={
+    "messages": [{"role": "assistant", "content": "Done."}],
+    "planning": [{"content": "Thinking step", "step": 1}],
+    "actions": [{"name": "search", "description": "Searched web"}],
+})
+
+# Read — fetch full context
+ctx = requests.get("${host}/api/sync/context", headers=HEADERS).json()`;
+
+  const features = [
+    { icon: "💭", title: "Thought Namespaces", desc: "Each project gets its own isolated memory space with a unique Thought Key." },
+    { icon: "🔑", title: "Brain Token + Thought Keys", desc: "Master access via Brain Token. Per-project agents use scoped Thought Keys — no cross-contamination." },
+    { icon: "📨", title: "Messages, Planning & Actions", desc: "Store full conversation history, thinking steps, tool calls, and logs in a single sync call." },
+    { icon: "📖", title: "Read by AI", desc: "Agents can fetch their entire context in one call — ready to paste into any prompt." },
+    { icon: "🗄️", title: "MongoDB Backed", desc: "All data persisted in MongoDB. Bring your own URI or use the default shared instance." },
+    { icon: "⚡", title: "REST API", desc: "Dead-simple HTTP API. Works with any language, any framework, any agent." },
+  ];
+
   return (
-    <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-8">
-      <h2 className="font-semibold text-blue-900 mb-1">Enter your Brain Token</h2>
-      <p className="text-sm text-blue-700 mb-4">
-        Your Brain Token (starts with <code className="bg-blue-100 px-1 rounded">bt_</code>) is required to view and manage thoughts.
-        Don't have one? Register via <code className="bg-blue-100 px-1 rounded">POST /api/auth/register</code>.
-      </p>
-      <div className="flex gap-2">
-        <input
-          type="password"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && input && onToken(input)}
-          placeholder="bt_..."
-          className="flex-1 px-3 py-2 border border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-        />
+    <div className="min-h-screen bg-gray-950 text-white">
+      {/* Nav */}
+      <nav className="border-b border-gray-800 px-6 py-4 flex items-center justify-between max-w-6xl mx-auto">
+        <span className="text-lg font-bold">🧠 Agent Brain</span>
         <button
-          onClick={() => input && onToken(input)}
-          className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+          onClick={() => setShowToken(true)}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-sm font-semibold rounded-lg transition-colors"
         >
-          Connect
+          Open Dashboard →
         </button>
-      </div>
+      </nav>
+
+      {/* Hero */}
+      <section className="max-w-4xl mx-auto px-6 pt-20 pb-16 text-center">
+        <div className="inline-flex items-center gap-2 bg-blue-950 border border-blue-800 text-blue-300 text-xs font-medium px-3 py-1.5 rounded-full mb-6">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+          MongoDB-backed · REST API · Any agent, any language
+        </div>
+        <h1 className="text-5xl font-extrabold tracking-tight mb-5 bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent">
+          Persistent Memory<br />for AI Agents
+        </h1>
+        <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10">
+          Agent Brain gives your AI agents a shared, persistent memory store. Sync messages, planning steps, and actions across sessions — then read it all back in one call.
+        </p>
+        <div className="flex gap-3 justify-center flex-wrap">
+          <button
+            onClick={() => setShowToken(true)}
+            className="px-6 py-3 bg-blue-600 hover:bg-blue-500 font-semibold rounded-xl transition-colors text-sm"
+          >
+            Open Dashboard
+          </button>
+          <a
+            href="#how-it-works"
+            className="px-6 py-3 bg-gray-800 hover:bg-gray-700 font-semibold rounded-xl transition-colors text-sm"
+          >
+            How it works ↓
+          </a>
+        </div>
+      </section>
+
+      {/* Code snippet */}
+      <section className="max-w-3xl mx-auto px-6 pb-20">
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-800">
+            <span className="w-3 h-3 rounded-full bg-red-500/60" />
+            <span className="w-3 h-3 rounded-full bg-yellow-500/60" />
+            <span className="w-3 h-3 rounded-full bg-green-500/60" />
+            <span className="text-xs text-gray-500 ml-2 font-mono">agent_memory.py</span>
+          </div>
+          <pre className="p-5 text-sm font-mono text-green-300 leading-relaxed overflow-x-auto whitespace-pre">
+            {exampleSnippet}
+          </pre>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section className="max-w-5xl mx-auto px-6 pb-20">
+        <h2 className="text-2xl font-bold text-center mb-10">Everything your agent needs</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {features.map((f) => (
+            <div key={f.title} className="bg-gray-900 border border-gray-800 rounded-xl p-5 hover:border-gray-600 transition-colors">
+              <div className="text-2xl mb-3">{f.icon}</div>
+              <h3 className="font-semibold text-white mb-1">{f.title}</h3>
+              <p className="text-sm text-gray-400 leading-relaxed">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section id="how-it-works" className="max-w-4xl mx-auto px-6 pb-20">
+        <h2 className="text-2xl font-bold text-center mb-10">How it works</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          {[
+            { step: "1", title: "Register", desc: "Call POST /api/auth/register to get your Brain Token. Create a Thought for each project — you get a scoped Thought Key." },
+            { step: "2", title: "Sync", desc: "Your agent POSTs to /api/sync with its Thought Key. Messages, planning steps, and actions are saved automatically." },
+            { step: "3", title: "Read", desc: "On the next run, GET /api/sync/context returns the full event history — drop it straight into your system prompt." },
+          ].map((s) => (
+            <div key={s.step} className="relative bg-gray-900 border border-gray-800 rounded-xl p-6">
+              <div className="w-8 h-8 rounded-full bg-blue-600 text-white text-sm font-bold flex items-center justify-center mb-4">
+                {s.step}
+              </div>
+              <h3 className="font-semibold text-white mb-2">{s.title}</h3>
+              <p className="text-sm text-gray-400 leading-relaxed">{s.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Connect CTA */}
+      <section className="max-w-xl mx-auto px-6 pb-24 text-center">
+        <h2 className="text-2xl font-bold mb-3">Ready to connect?</h2>
+        <p className="text-gray-400 text-sm mb-6">Enter your Brain Token to open the dashboard and manage your thoughts.</p>
+        {showToken ? (
+          <div className="flex gap-2">
+            <input
+              autoFocus
+              type="password"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && input && onToken(input)}
+              placeholder="bt_..."
+              className="flex-1 px-4 py-3 bg-gray-900 border border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-white placeholder-gray-500"
+            />
+            <button
+              onClick={() => input && onToken(input)}
+              className="px-5 py-3 bg-blue-600 hover:bg-blue-500 text-sm font-semibold rounded-xl transition-colors"
+            >
+              Connect
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowToken(true)}
+            className="px-8 py-3 bg-blue-600 hover:bg-blue-500 font-semibold rounded-xl transition-colors"
+          >
+            Open Dashboard →
+          </button>
+        )}
+      </section>
+
+      <footer className="border-t border-gray-800 py-6 text-center text-xs text-gray-600">
+        Agent Brain · {host}
+      </footer>
     </div>
   );
 }
@@ -1277,6 +1399,10 @@ export default function App() {
     { key: "howto", label: "How To", icon: "📖" },
   ];
 
+  if (!token) {
+    return <LandingPage onToken={handleToken} />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
@@ -1293,14 +1419,12 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {token && (
-              <button
-                onClick={() => { setToken(""); localStorage.removeItem("brain_token"); }}
-                className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-              >
-                Disconnect
-              </button>
-            )}
+            <button
+              onClick={() => { setToken(""); localStorage.removeItem("brain_token"); }}
+              className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+            >
+              Disconnect
+            </button>
             <nav className="flex gap-1 bg-gray-100 rounded-lg p-1">
               {tabs.map((t) => (
                 <button
@@ -1321,13 +1445,7 @@ export default function App() {
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8">
-        {tab === "thoughts" && (
-          !token ? (
-            <AuthBanner token={token} onToken={handleToken} />
-          ) : (
-            <ThoughtsTab token={token} />
-          )
-        )}
+        {tab === "thoughts" && <ThoughtsTab token={token} />}
         {tab === "overview" && <OverviewTab apiStatus={apiStatus} mongoStatus={mongoStatus} health={health} />}
         {tab === "howto" && <HowToTab />}
       </main>
