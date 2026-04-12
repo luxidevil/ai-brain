@@ -543,6 +543,15 @@ The response contains your full event history in chronological order.
 
 ---
 
+IMPORTANT RULES:
+1. At the START of every session, READ your context first to remember previous work.
+2. Save incrementally as you work — after each major task, tool use, or thinking step.
+3. At the END of every session (when the user says goodbye, thanks you, or the conversation is winding down), you MUST do a final sync that includes:
+   - A summary message of everything accomplished this session
+   - All planning/thinking steps not yet saved
+   - All actions/tool calls not yet saved
+   This final sync is critical — it is how future sessions know what happened. Never end a session without it.
+
 Use this memory proactively. The more you record, the more useful your memory becomes over time.`,
 
     curl: `# Write (sync messages/planning/actions to this thought)
