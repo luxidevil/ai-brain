@@ -1397,7 +1397,7 @@ Authorization: Bearer tk_... (Thought Key)
           </div>
 
           <div>
-            <h4 className="font-semibent text-gray-800 mb-2">4. Recall context in a new session</h4>
+            <h4 className="font-semibold text-gray-800 mb-2">4. Recall context in a new session</h4>
             <pre className="bg-gray-900 text-green-400 rounded-lg p-3 text-xs overflow-auto">{`GET /api/sync/context?projectId=my-project
 Authorization: Bearer tk_...
 
