@@ -346,16 +346,20 @@ function ReadByAIModal({
 
 function AppendModal({
   thoughtId,
+  thoughtKey,
   token,
   onClose,
   onDone,
 }: {
   thoughtId: string;
+  thoughtKey?: string;
   token: string;
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [mode, setMode] = useState<"quick" | "json">("quick");
+  const [mode, setMode] = useState<"quick" | "json" | "code">("quick");
+  const [codeLang, setCodeLang] = useState<"curl" | "python" | "js">("curl");
+  const [codeCopied, setCodeCopied] = useState(false);
   const [role, setRole] = useState<"user" | "assistant" | "system">("user");
   const [content, setContent] = useState("");
   const [jsonText, setJsonText] = useState(
@@ -372,6 +376,70 @@ function AppendModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const host = window.location.origin;
+  const keyDisplay = thoughtKey ?? "YOUR_THOUGHT_KEY";
+
+  const codeSnippets: Record<"curl" | "python" | "js", string> = {
+    curl: `# Write (sync messages/planning/actions to this thought)
+curl -X POST ${host}/api/sync \\
+  -H "Authorization: Bearer ${keyDisplay}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "messages": [{"role": "assistant", "content": "..."}],
+    "planning": [{"content": "Thinking step", "step": 1}],
+    "actions": [{"name": "tool-used", "description": "What happened"}]
+  }'
+
+# Read (fetch full context for this thought)
+curl "${host}/api/sync/context" \\
+  -H "Authorization: Bearer ${keyDisplay}"`,
+
+    python: `import requests
+
+BASE = "${host}/api"
+HEADERS = {"Authorization": "Bearer ${keyDisplay}"}
+
+# Write — sync messages, planning steps, actions
+requests.post(f"{BASE}/sync", headers=HEADERS, json={
+    "messages": [{"role": "assistant", "content": "..."}],
+    "planning": [{"content": "Thinking step", "step": 1}],
+    "actions": [{"name": "tool-used", "description": "What happened"}],
+})
+
+# Read — fetch full context for this thought
+ctx = requests.get(f"{BASE}/sync/context", headers=HEADERS).json()
+for event in ctx["events"]:
+    print(event)`,
+
+    js: `const BASE = "${host}/api";
+const HEADERS = {
+  "Authorization": "Bearer ${keyDisplay}",
+  "Content-Type": "application/json",
+};
+
+// Write — sync messages, planning steps, actions
+await fetch(\`\${BASE}/sync\`, {
+  method: "POST",
+  headers: HEADERS,
+  body: JSON.stringify({
+    messages: [{ role: "assistant", content: "..." }],
+    planning: [{ content: "Thinking step", step: 1 }],
+    actions: [{ name: "tool-used", description: "What happened" }],
+  }),
+});
+
+// Read — fetch full context for this thought
+const ctx = await fetch(\`\${BASE}/sync/context\`, { headers: HEADERS }).then(r => r.json());
+ctx.events.forEach(e => console.log(e));`,
+  };
+
+  const copyCode = () => {
+    navigator.clipboard.writeText(codeSnippets[codeLang]).then(() => {
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    });
+  };
 
   const submit = async () => {
     setError(""); setSuccess(""); setSaving(true);
@@ -436,6 +504,12 @@ function AppendModal({
             >
               Paste JSON
             </button>
+            <button
+              onClick={() => setMode("code")}
+              className={`flex-1 py-2 text-sm rounded-lg font-medium transition-colors ${mode === "code" ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+            >
+              Copy Code
+            </button>
           </div>
 
           {mode === "quick" && (
@@ -452,9 +526,11 @@ function AppendModal({
                 ))}
               </div>
               <textarea
+                autoFocus
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder="Type your message here..."
+                onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submit(); }}
+                placeholder="Type your message here... (Ctrl+Enter to submit)"
                 rows={5}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
               />
@@ -473,16 +549,48 @@ function AppendModal({
             </div>
           )}
 
-          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
-          {success && <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">{success}</p>}
+          {mode === "code" && (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-500">
+                Copy and paste into your agent. The Thought Key is pre-filled — it auto-binds to <strong>{thoughtId}</strong>.
+              </p>
+              <div className="flex gap-2">
+                {(["curl", "python", "js"] as const).map((lang) => (
+                  <button
+                    key={lang}
+                    onClick={() => { setCodeLang(lang); setCodeCopied(false); }}
+                    className={`px-3 py-1.5 text-xs rounded-lg font-mono font-semibold transition-colors ${codeLang === lang ? "bg-orange-100 text-orange-700 border border-orange-300" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                  >
+                    {lang === "js" ? "JavaScript" : lang === "curl" ? "cURL" : "Python"}
+                  </button>
+                ))}
+              </div>
+              <div className="relative">
+                <pre className="bg-gray-950 text-green-300 text-xs font-mono rounded-lg p-4 overflow-x-auto whitespace-pre leading-relaxed max-h-64 overflow-y-auto">
+                  {codeSnippets[codeLang]}
+                </pre>
+                <button
+                  onClick={copyCode}
+                  className="absolute top-2 right-2 px-2.5 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded-md transition-colors"
+                >
+                  {codeCopied ? "✓ Copied!" : "Copy"}
+                </button>
+              </div>
+            </div>
+          )}
 
-          <button
-            onClick={submit}
-            disabled={saving}
-            className="w-full py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
-            {saving ? "Saving..." : "Append to Thought"}
-          </button>
+          {mode !== "code" && error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+          {mode !== "code" && success && <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">{success}</p>}
+
+          {mode !== "code" && (
+            <button
+              onClick={submit}
+              disabled={saving}
+              className="w-full py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              {saving ? "Saving..." : "Append to Thought"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -663,6 +771,7 @@ function ThoughtDetail({
       {showAppend && (
         <AppendModal
           thoughtId={thoughtId}
+          thoughtKey={thoughtKey}
           token={token}
           onClose={() => setShowAppend(false)}
           onDone={load}
