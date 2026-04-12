@@ -480,7 +480,7 @@ function AppendModal({
   onDone: () => void;
 }) {
   const [mode, setMode] = useState<"quick" | "json" | "code">("quick");
-  const [codeLang, setCodeLang] = useState<"curl" | "python" | "js">("curl");
+  const [codeLang, setCodeLang] = useState<"prompt" | "curl" | "python" | "js">("prompt");
   const [codeCopied, setCodeCopied] = useState(false);
   const [role, setRole] = useState<"user" | "assistant" | "system">("user");
   const [content, setContent] = useState("");
@@ -502,7 +502,49 @@ function AppendModal({
   const host = window.location.origin;
   const keyDisplay = thoughtKey ?? "YOUR_THOUGHT_KEY";
 
-  const codeSnippets: Record<"curl" | "python" | "js", string> = {
+  const codeSnippets: Record<"prompt" | "curl" | "python" | "js", string> = {
+    prompt: `## Your Persistent Memory — Agent Brain
+
+You have access to a persistent memory system called Agent Brain. This is your private memory store for this project (thought: "${thoughtId}"). Use it throughout your session to record what you do, what you think, and what actions you take. This memory persists across sessions — future versions of you will read it to pick up where you left off.
+
+MEMORY ENDPOINT: ${host}/api/sync
+YOUR KEY: ${keyDisplay}
+
+---
+
+SAVE YOUR WORK — call this after completing tasks, using tools, or finishing a thinking step:
+
+  Method: POST ${host}/api/sync
+  Header: Authorization: Bearer ${keyDisplay}
+  Header: Content-Type: application/json
+  Body:
+  {
+    "messages": [
+      { "role": "assistant", "content": "What you just said or did" }
+    ],
+    "planning": [
+      { "content": "Your reasoning or thinking step", "step": 1 }
+    ],
+    "actions": [
+      { "name": "tool-name", "description": "Brief description of what you did" }
+    ]
+  }
+
+You only need to include the fields relevant to what just happened. All fields are optional.
+
+---
+
+READ YOUR CONTEXT — call this at the start of each session to remember what you've done:
+
+  Method: GET ${host}/api/sync/context
+  Header: Authorization: Bearer ${keyDisplay}
+
+The response contains your full event history in chronological order.
+
+---
+
+Use this memory proactively. The more you record, the more useful your memory becomes over time.`,
+
     curl: `# Write (sync messages/planning/actions to this thought)
 curl -X POST ${host}/api/sync \\
   -H "Authorization: Bearer ${keyDisplay}" \\
@@ -674,26 +716,34 @@ ctx.events.forEach(e => console.log(e));`,
           {mode === "code" && (
             <div className="space-y-3">
               <p className="text-xs text-gray-500">
-                Copy and paste into your agent. The Thought Key is pre-filled — it auto-binds to <strong>{thoughtId}</strong>.
+                {codeLang === "prompt"
+                  ? "Paste this directly into any AI agent's system prompt or first message. It frames the API as the agent's own memory — agents accept this without resistance."
+                  : "Copy and paste into your agent code. The Thought Key is pre-filled — it auto-binds to " + thoughtId + "."}
               </p>
-              <div className="flex gap-2">
-                {(["curl", "python", "js"] as const).map((lang) => (
+              <div className="flex gap-2 flex-wrap">
+                {(["prompt", "curl", "python", "js"] as const).map((lang) => (
                   <button
                     key={lang}
                     onClick={() => { setCodeLang(lang); setCodeCopied(false); }}
-                    className={`px-3 py-1.5 text-xs rounded-lg font-mono font-semibold transition-colors ${codeLang === lang ? "bg-orange-100 text-orange-700 border border-orange-300" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                    className={`px-3 py-1.5 text-xs rounded-lg font-semibold transition-colors ${codeLang === lang ? "bg-orange-100 text-orange-700 border border-orange-300" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
                   >
-                    {lang === "js" ? "JavaScript" : lang === "curl" ? "cURL" : "Python"}
+                    {lang === "prompt" ? "🤖 Agent Prompt" : lang === "js" ? "JavaScript" : lang === "curl" ? "cURL" : "Python"}
                   </button>
                 ))}
               </div>
               <div className="relative">
-                <pre className="bg-gray-950 text-green-300 text-xs font-mono rounded-lg p-4 overflow-x-auto whitespace-pre leading-relaxed max-h-64 overflow-y-auto">
-                  {codeSnippets[codeLang]}
-                </pre>
+                {codeLang === "prompt" ? (
+                  <pre className="bg-amber-50 border border-amber-200 text-gray-800 text-xs rounded-lg p-4 overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto font-sans">
+                    {codeSnippets.prompt}
+                  </pre>
+                ) : (
+                  <pre className="bg-gray-950 text-green-300 text-xs font-mono rounded-lg p-4 overflow-x-auto whitespace-pre leading-relaxed max-h-64 overflow-y-auto">
+                    {codeSnippets[codeLang]}
+                  </pre>
+                )}
                 <button
                   onClick={copyCode}
-                  className="absolute top-2 right-2 px-2.5 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded-md transition-colors"
+                  className={`absolute top-2 right-2 px-2.5 py-1 text-xs rounded-md transition-colors ${codeLang === "prompt" ? "bg-amber-600 hover:bg-amber-700 text-white" : "bg-gray-700 hover:bg-gray-600 text-white"}`}
                 >
                   {codeCopied ? "✓ Copied!" : "Copy"}
                 </button>
