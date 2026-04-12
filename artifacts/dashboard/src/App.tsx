@@ -399,8 +399,9 @@ function AppendModal({
       const d = await r.json();
       if (!r.ok) { setError(d.error ?? "Failed"); setSaving(false); return; }
       setSuccess(`Saved ${d.saved ?? "?"} item(s) successfully`);
-      setContent(""); 
-      setTimeout(() => { onDone(); onClose(); }, 1200);
+      setContent("");
+      onDone();
+      setTimeout(onClose, 1200);
     } catch {
       setError("Request failed");
     } finally {
